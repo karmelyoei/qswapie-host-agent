@@ -35,7 +35,7 @@
         <div class="chair-status"><span class="chair-icon" aria-hidden="true">✳</span><div><b>Chair 01</b><small id="chairText">–</small></div><i id="chairTag">IN SERVICE</i></div>
         <div class="skin-ctl">
           <label>Closing <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></label>
-          <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) stopAllSpeech(); vctl()">🔊 Voice on</button>
+          <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) stopAllSpeech('mute'); vctl()">🔊 Voice on</button>
           <button id="micToggle" type="button" title="Pause or resume listening" onclick="toggleMic()">🎙 on</button>
           <label>Voice <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select></label>
           <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>
@@ -130,6 +130,7 @@ function startOrMic() { toggleMic(); } // after the start tap the mic button is 
 // The one start tap: unlock audio, restart the story (09:00, clock paused), then listen hands-free from now on.
 async function beginHazel() {
   const o = $("startOverlay"); if (!o || o.dataset.busy) return; o.dataset.busy = "1";
+  try { getPlayCtx(); } catch {}
   try { const ctx = new AudioContext(); await ctx.resume(); const g = ctx.createGain(); g.gain.value = 0; const osc = ctx.createOscillator(); osc.connect(g).connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.05); } catch {}
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
   stopAllSpeech();

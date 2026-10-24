@@ -78,7 +78,7 @@
     <div id="interim" class="interim"></div>
     <div class="ctl">
       <button id="startBtn" class="primary" onclick="startDay()">🎙 Start listening</button>
-      <button id="muteBtn" onclick="muted=!muted; if(muted) stopAllSpeech(); vctl()">🔊 Voice on</button>
+      <button id="muteBtn" onclick="muted=!muted; if(muted) stopAllSpeech('mute'); vctl()">🔊 Voice on</button>
       <span class="tok">Closing</span> <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})">
     </div>
     <div class="ctl"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select> <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>

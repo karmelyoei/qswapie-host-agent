@@ -61,17 +61,34 @@ function loadVoices() {
 function chosenVoice() { return voices.find(v => v.name === $("voicePick").value) || voices[0] || null; }
 if (window.speechSynthesis) { loadVoices(); speechSynthesis.addEventListener("voiceschanged", loadVoices); }
 
-// Hazel's voice: OpenAI TTS through our server (sentence by sentence, fetched in parallel, played in order).
-// Any error or more than 4 s without audio: the browser voice takes over for a minute.
-let audioQ = [], audioPlaying = false, ttsDownUntil = 0, currentAudio = null, voiceSource = "";
+// Hazel's voice: OpenAI TTS through our server. Each sentence is fetched whole (no progressive streaming,
+// which stalls on weak Wi-Fi), decoded, and played through ONE AudioContext, strictly one after another.
+// New lines always queue behind the current one; only Restart, mute or a real barge-in cancel.
+let audioQ = [], audioPlaying = false, ttsDownUntil = 0, currentAudio = null, currentSrc = null, voiceSource = "", playCtx = null;
+const DEBUG = /[?&]debug=1/.test(location.search);
+function audioLog(reason, text) {
+  const line = `[audio] ${reason}${text ? ": " + text.slice(0, 60) : ""}`;
+  console.log(line);
+  if (DEBUG) {
+    let el = document.getElementById("audioDebug");
+    if (!el) { el = document.createElement("pre"); el.id = "audioDebug"; el.style.cssText = "position:fixed;right:8px;bottom:8px;z-index:200;max-width:420px;max-height:180px;overflow:auto;margin:0;padding:6px 8px;font:11px/1.35 ui-monospace,monospace;background:#000c;color:#ffd2a8;border-radius:8px;pointer-events:none"; document.body.appendChild(el); }
+    el.textContent = (new Date().toLocaleTimeString() + " " + line + "\n" + el.textContent).slice(0, 2500);
+  }
+}
+function getPlayCtx() {
+  if (!playCtx) playCtx = new AudioContext();
+  if (playCtx.state === "suspended") playCtx.resume().catch(() => {});
+  return playCtx;
+}
 function useOpenAI() { return !!(S && S.tts && S.tts.openai) && Date.now() > ttsDownUntil; }
 async function fetchTts(text) {
   const ctrl = new AbortController();
-  const to = setTimeout(() => ctrl.abort(), 4000);
+  const to = setTimeout(() => ctrl.abort(), 8000); // event Wi-Fi is slow: allow 8 s per sentence
   try {
     const r = await fetch("/api/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }), signal: ctrl.signal });
-    if (!r.ok) throw new Error("tts " + r.status);
-    return URL.createObjectURL(await r.blob());
+    if (!r.ok) throw new Error("http " + r.status);
+    const bytes = await r.arrayBuffer();
+    return await getPlayCtx().decodeAudioData(bytes);
   } finally { clearTimeout(to); }
 }
 function say(text) {
@@ -82,19 +99,21 @@ function say(text) {
   if (!useOpenAI()) { voiceSource = "browser"; return sayBrowser(text); }
   voiceSource = "OpenAI";
   for (const p of parts) {
-    const item = { text: p, url: null, failed: false };
-    item.ready = fetchTts(p).then(u => { item.url = u; }).catch(() => { item.failed = true; });
+    const item = { text: p, buf: null, failed: "" };
+    item.ready = fetchTts(p).then(bf => { item.buf = bf; }).catch((e) => { item.failed = e.name === "AbortError" ? "timeout" : String(e.message || e); });
     audioQ.push(item);
   }
+  audioLog("queued " + parts.length + " sentence(s), " + audioQ.length + " waiting", text);
   playNext();
 }
-function browserLine(text) { // one utterance as a promise, for the fallback inside the OpenAI queue
+function browserLine(text) { // one utterance as a promise: the fallback for a single sentence
   return new Promise((res) => {
     if (!window.speechSynthesis) return res();
     const u = new SpeechSynthesisUtterance(text); const v = chosenVoice();
     if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-US";
-    u.onend = u.onerror = () => res();
-    setTimeout(res, 2500 + text.split(" ").length * 450);
+    let done = false; const fin = () => { if (!done) { done = true; res(); } };
+    u.onend = u.onerror = fin;
+    setTimeout(fin, 2500 + text.split(" ").length * 450);
     speechSynthesis.speak(u);
   });
 }
@@ -104,19 +123,30 @@ async function playNext() {
   if (!item) { if (speaking) { speaking = false; resumeRec(); vctl(); } return; }
   audioPlaying = true; speaking = true; pauseRec(); vctl();
   await item.ready;
-  const done = () => { audioPlaying = false; currentAudio = null; playNext(); };
-  if (item.failed || !item.url) {
-    ttsDownUntil = Date.now() + 60000; voiceSource = "browser (OpenAI failed)";
-    await browserLine(item.text); return done();
+  if (!audioPlaying) return; // cancelled while waiting (restart, mute, barge-in)
+  const done = (reason) => { audioLog(reason, item.text); audioPlaying = false; currentSrc = null; playNext(); };
+  if (!item.buf) {
+    audioLog("OpenAI " + (item.failed || "no audio") + ", browser voice for this sentence", item.text);
+    await browserLine(item.text); return done("ended (browser fallback)");
   }
-  const a = new Audio(item.url); currentAudio = a;
-  a.onended = () => { URL.revokeObjectURL(item.url); done(); };
-  a.onerror = async () => { await browserLine(item.text); done(); };
-  try { await a.play(); } catch { await browserLine(item.text); done(); }
+  try {
+    const ctx = getPlayCtx();
+    const src = ctx.createBufferSource(); src.buffer = item.buf; src.connect(ctx.destination);
+    currentSrc = src;
+    src.onended = () => { if (currentSrc === src) done("ended"); };
+    src.start();
+    audioLog("playing " + item.buf.duration.toFixed(1) + " s", item.text);
+  } catch (e) {
+    audioLog("play error " + (e && e.name), item.text);
+    await browserLine(item.text); done("ended (browser fallback)");
+  }
 }
-// Stop everything Hazel is saying (Restart day, mute).
-function stopAllSpeech() {
-  audioQ = []; try { currentAudio && currentAudio.pause(); } catch {} currentAudio = null; audioPlaying = false;
+// Stop everything Hazel is saying (Restart day, mute, barge-in).
+function stopAllSpeech(reason = "restart") {
+  if (audioQ.length || audioPlaying) audioLog("cancelled by " + reason + " (" + audioQ.length + " queued)");
+  audioQ = [];
+  const src = currentSrc; currentSrc = null; try { src && src.stop(); } catch {}
+  try { currentAudio && currentAudio.pause(); } catch {} currentAudio = null; audioPlaying = false;
   try { speechSynthesis.cancel(); } catch {}
   if (streamCtrl) { try { streamCtrl.abort(); } catch {} streamCtrl = null; }
   speaking = false; thinking = false; streamedReplies = 0; awakeUntil = 0;
@@ -154,8 +184,9 @@ let hazelSaying = "", loudSince = 0, echoFloor = 0.01;
 function bargeIn(why) {
   if (!speaking && !audioPlaying) return;
   console.log("[duplex] barge-in:", why);
-  audioQ = []; try { currentAudio && currentAudio.pause(); } catch {} currentAudio = null; audioPlaying = false;
-  try { speechSynthesis.cancel(); } catch {}
+  audioLog("cancelled by mic (barge-in: " + why + ")");
+  audioQ = []; const src = currentSrc; currentSrc = null; try { src && src.stop(); } catch {}
+  audioPlaying = false; try { speechSynthesis.cancel(); } catch {}
   speaking = false; vctl();
 }
 // Echo guard: drop a "turn" that is mostly Hazel's own words coming back through the speakers.
@@ -203,6 +234,7 @@ async function handleUtterance(text, typed) {
   text = (text || "").trim();
   if (!text || thinking) return;
   if (DUPLEX && !typed && isEcho(text)) { console.log("[duplex] echo dropped:", text); return; }
+  if (!DUPLEX && !typed && (speaking || audioPlaying) && text.split(/\s+/).length < 4) { audioLog("ignored short mic turn while Hazel speaks", text); return; }
   const cmd = findWake(text);
   const awake = Date.now() < awakeUntil;
   if (cmd === null && !awake && !typed && wakeOn) { $("interim").textContent = `(heard "${text}": say "Hey Hazel" first)`; return; }
