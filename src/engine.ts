@@ -230,6 +230,7 @@ export class Sim {
   recentEvents() {
     const fresh = this.events.slice(this.eventsCursor);
     this.eventsCursor = this.events.length;
+    this.spokenCursor = this.events.length; // the barber just heard it; don't repeat it between cuts
     const out = fresh.filter((e) => e.notable).map((e) => `${clock(e.t)} ${e.text}`);
     const joins = fresh.filter((e) => e.text.endsWith("joined the queue")).length;
     if (joins) out.push(`${clock(this.t)} ${joins} new walk-ins joined`);

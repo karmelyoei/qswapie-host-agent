@@ -28,7 +28,7 @@ Open http://localhost:5173
 $a = Read-Host 'Anthropic key' -AsSecureString; $r = Read-Host 'Reson8 key' -AsSecureString; $env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', $a).Password; $env:RESON8_API_KEY = [Net.NetworkCredential]::new('', $r).Password; npm start
 ```
 
-Or put `ANTHROPIC_API_KEY=...` and `RESON8_API_KEY=...` in a local `.env` file (gitignored, see `.env.example`). Open the app in **Chrome** (mic and voices).
+Or put `ANTHROPIC_API_KEY=...` and `RESON8_API_KEY=...` in a local `.env` file (gitignored, see `.env.example`). Run the demo in **Microsoft Edge**: on Windows it has the human-sounding "Natural" neural voices, which Fade picks automatically (Chrome works too, with Google voices). Pick another voice in the Voice dropdown of the voice panel; the choice is remembered. Add `?voice=off` to the URL to keep Fade silent, for example when testing.
 
 Every part has a fallback, so the demo never dies on stage:
 - No Anthropic key, or the API fails: **Offline rules** mode (orange label). It retries Claude after 60 seconds.

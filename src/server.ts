@@ -85,7 +85,8 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end("{}");
     }
-    const file = req.url === "/" ? "index.html" : (req.url ?? "").replace(/^\/+/, "");
+    const urlPath = (req.url ?? "/").split("?")[0]; // allow ?voice=off, ?skin=new
+    const file = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
     const full = path.join(PUBLIC, path.normalize(file));
     if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
     res.writeHead(200, { "content-type": full.endsWith(".html") ? "text/html; charset=utf-8" : "text/plain" });

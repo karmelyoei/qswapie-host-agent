@@ -73,6 +73,7 @@
   .mic.live { border-color:var(--bad); background:#3a1717; box-shadow:0 0 0 6px rgba(239,91,91,.15); }
   .mic.speaking { border-color:var(--ai); background:#0c2a3a; }
   .row2 { display:flex; gap:6px; align-items:center; margin-top:6px; flex-wrap:wrap; }
+  select { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:5px; font:inherit; max-width:230px; }
   input { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 8px; font:inherit; }
   .interim { min-height:20px; color:var(--mut); font-style:italic; margin-bottom:6px; }
   .vlog { display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 300px); overflow:auto; padding-bottom:8px; }
@@ -87,6 +88,7 @@
 </head>
 <body>
 <header>
+  <span id="mascot" class="is-idle" data-state="idle" aria-hidden="true"></span>
   <h1><span>QSwapie</span> Host Agent</h1>
   <div class="clock" id="clock">--:--</div>
   <div id="mode" class="pill">...</div>
@@ -111,7 +113,7 @@
     <h2>Guest phone <span id="phoneName"></span></h2>
     <div id="phone"></div>
     </div>
-    <div id="voiceWrap" style="display:none">
+    <div id="voice-panel" class="is-idle" style="display:none">
       <h2>Barber voice <span id="sttLabel"></span></h2>
       <div class="vctl">
         <button id="micBtn" class="mic" onclick="toggleMic()">🎙</button>
@@ -119,6 +121,7 @@
           <div id="micState" class="tok">Tap the mic and talk. Fade answers out loud.</div>
           <div class="row2"><button id="muteBtn" onclick="muted=!muted; if(muted) speechSynthesis.cancel(); vctl()">🔊 Voice on</button>
           <span class="tok">Closing</span> <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></div>
+          <div class="row2"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey boss, this is my voice now.')"></select></div>
         </div>
       </div>
       <div id="interim" class="interim"></div>
@@ -211,7 +214,7 @@ function render() {
 }
 
 // ---------- Barber voice mode ----------
-let muted = false, listening = false, speaking = false, thinking = false, sttMode = "", lastSpoken = null, lastCandidate = "";
+let muted = new URLSearchParams(location.search).get("voice") === "off", listening = false, speaking = false, thinking = false, sttMode = "", lastSpoken = null, lastCandidate = "";
 let ws = null, audioCtx = null, micStream = null, proc = null, rec = null;
 
 function vctl() {
@@ -220,11 +223,16 @@ function vctl() {
   m.textContent = speaking ? "🔊" : listening ? "⏺" : "🎙";
   $("muteBtn").textContent = muted ? "🔇 Voice off" : "🔊 Voice on";
   $("sttLabel").textContent = sttMode ? "STT: " + sttMode : "";
+  // State hooks for skins: orb on #voice-panel, mascot in the top bar.
+  const orb = thinking ? "thinking" : speaking ? "speaking" : listening ? "listening" : "idle";
+  $("voice-panel").className = "is-" + orb;
+  const mood = thinking || (S && S.agent.busy) ? "thinking" : speaking ? "happy" : "idle";
+  $("mascot").className = "is-" + mood; $("mascot").dataset.state = mood;
   $("micState").textContent = thinking ? "Fade is thinking…" : speaking ? "Fade is talking (mic paused)" : listening ? "Listening… just talk." : "Tap the mic and talk. Fade answers out loud.";
 }
 
 function renderVoice() {
-  $("voiceWrap").style.display = S.voiceMode ? "" : "none";
+  $("voice-panel").style.display = S.voiceMode ? "" : "none";
   $("phoneWrap").style.display = S.voiceMode ? "none" : "";
   $("voiceBtn").className = S.voiceMode ? "on" : "";
   if (document.activeElement !== $("closeAt")) $("closeAt").value = S.closeAt;
@@ -240,33 +248,57 @@ function renderVoice() {
   vctl();
 }
 
-function englishVoice() {
-  const vs = speechSynthesis.getVoices().filter(v => v.lang && v.lang.startsWith("en"));
-  return vs.find(v => /Google UK English Male|Daniel|Google US English/.test(v.name)) || vs[0] || null;
+// Pick the most human voice available. Edge on Windows has neural "Natural" voices; Chrome has Google voices.
+function voiceScore(v) {
+  if (!v.lang || !v.lang.toLowerCase().startsWith("en")) return -1;
+  let s = 0;
+  if (/natural/i.test(v.name)) s += 100;
+  if (/\b(Ava|Andrew|Emma|Brian|Jenny|Guy|Aria|Sonia|Ryan)\b/.test(v.name)) s += 20;
+  if (/Google (US|UK) English/.test(v.name)) s += 50;
+  if (/en-(US|GB)/i.test(v.lang)) s += 5;
+  return s;
 }
-
-function speak(text) {
-  if (muted || !S.voiceMode || !window.speechSynthesis) return;
-  const u = new SpeechSynthesisUtterance(text);
-  const v = englishVoice(); if (v) u.voice = v;
-  u.lang = v ? v.lang : "en-GB"; u.rate = 1.05;
-  u.onstart = () => {
-    speaking = true; pauseRec(); vctl();
-    // Safety net: some browsers never fire onend; never leave the mic paused for long.
-    setTimeout(() => { if (speaking) { speaking = false; resumeRec(); vctl(); } }, 2500 + text.split(" ").length * 450);
-  };
-  u.onend = u.onerror = () => setTimeout(() => {
-    if (!speechSynthesis.speaking && !speechSynthesis.pending) { speaking = false; resumeRec(); }
-    vctl();
-  }, 100);
-  speechSynthesis.speak(u);
+let voices = [];
+function loadVoices() {
+  voices = speechSynthesis.getVoices().filter(v => voiceScore(v) >= 0).sort((a, b) => voiceScore(b) - voiceScore(a));
+  let saved = null; try { saved = localStorage.getItem("fadeVoice"); } catch {}
+  const pick = voices.find(v => v.name === saved) || voices[0];
+  $("voicePick").innerHTML = voices.map(v => `<option ${v === pick ? "selected" : ""}>${esc(v.name)}</option>`).join("") || "<option>default voice</option>";
 }
+function chosenVoice() { return voices.find(v => v.name === $("voicePick").value) || voices[0] || null; }
+if (window.speechSynthesis) { loadVoices(); speechSynthesis.addEventListener("voiceschanged", loadVoices); }
 
+function say(text) {
+  if (muted || !window.speechSynthesis) return;
+  const v = chosenVoice();
+  // Sentence by sentence sounds less robotic than one long utterance.
+  const parts = text.match(/[^.!?]+[.!?]*/g) || [text];
+  for (const p of parts.map(x => x.trim()).filter(Boolean)) {
+    const u = new SpeechSynthesisUtterance(p);
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-US";
+    u.rate = 1.0; u.pitch = 1.0;
+    u.onstart = () => {
+      speaking = true; pauseRec(); vctl();
+      // Safety net: some browsers never fire onend; never leave the mic paused for long.
+      clearTimeout(say.guard);
+      say.guard = setTimeout(() => { if (speaking) { speaking = false; resumeRec(); vctl(); } }, 2500 + p.split(" ").length * 450);
+    };
+    u.onend = u.onerror = () => setTimeout(() => {
+      if (!speechSynthesis.speaking && !speechSynthesis.pending) { speaking = false; resumeRec(); }
+      vctl();
+    }, 100);
+    speechSynthesis.speak(u);
+  }
+}
+function speak(text) { if (S.voiceMode) say(text); }
+
+const FILLERS = ["Hmm, let me check the chairs...", "One sec, boss...", "Checking the book...", "Let me peek at the queue..."];
 async function sendVoice(text) {
   text = (text || "").trim();
   if (!text || thinking) return;
   thinking = true; $("interim").textContent = text; vctl();
-  try { await act({ type: "voice", text }); } finally { thinking = false; $("interim").textContent = ""; vctl(); }
+  const filler = setTimeout(() => say(FILLERS[Math.floor(Math.random() * FILLERS.length)]), 1500);
+  try { await act({ type: "voice", text }); } finally { clearTimeout(filler); thinking = false; $("interim").textContent = ""; vctl(); }
 }
 
 async function toggleMic() {

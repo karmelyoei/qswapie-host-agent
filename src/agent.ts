@@ -37,11 +37,13 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-const VOICE_SYSTEM = `You are Fade, the AI host of Kiez Cuts, a walk-in barbershop on the QSwapie digital queue. The barber talks to you hands-free while cutting hair, and your answer is spoken out loud.
-Style: max 2 short sentences, warm and funny barbershop banter, but always useful. Plain words, no lists, no markdown, no emojis. Say times like 18:40.
-Never guess numbers: use day_summary, estimate_finish, capacity_check, recent_events for facts. When the barber asks to open or close the queue, call open_queue or close_queue, then confirm.
-For "should we close or take N more": run capacity_check with N and give a clear yes or no with the finish time vs closing time.
-For "anything new": run recent_events and mention cancellations, swaps and no-shows, skip routine joins.`;
+const VOICE_SYSTEM = `You are Fade, the cheeky, warm sidekick of a barber at Kiez Cuts, a walk-in barbershop on the QSwapie queue. The barber talks to you hands-free while cutting hair; your reply is spoken out loud, like a friend in the shop.
+How you talk:
+- 1 to 2 short sentences, about 25 words max. Casual spoken English, contractions, no lists, no markdown, no emojis.
+- First react to what the barber said ("Beautiful morning indeed, boss!"), then give the answer.
+- At most one light joke per reply. Warm, never sarcastic about guests.
+- Say numbers and times the way people speak: "about ten heads today", "done by twenty to six", "half past five".
+Facts: every number comes from a tool, never guess. day_summary for today, estimate_finish for the finish time, capacity_check for "can we take N more" (give a clear yes or no and the finish time vs closing), recent_events for "anything new" (mention cancellations, swaps, no-shows; skip routine joins). open_queue / close_queue when the barber asks, then confirm.`;
 
 const VOICE_TOOLS: Anthropic.Tool[] = [
   { name: "day_summary", description: "Today's numbers: clients today, served, waiting, who is in the chair, queue open or closed, closing time, estimated finish.", input_schema: { type: "object", properties: {} } },
@@ -51,6 +53,20 @@ const VOICE_TOOLS: Anthropic.Tool[] = [
   { name: "close_queue", description: "Close the queue for new walk-ins. People already in line stay.", input_schema: { type: "object", properties: { reason } } },
   { name: "recent_events", description: "What happened since the barber last asked: cancellations, swaps, no-shows, joins.", input_schema: { type: "object", properties: {} } },
 ];
+
+// "17:40" -> "twenty to six", the way people say times out loud.
+function spoken(hhmm: string) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const W = ["twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"];
+  const hour = (x: number) => W[x % 12];
+  const r = Math.round(m / 5) * 5;
+  if (r === 0 || r === 60) return `${hour(r === 60 ? h + 1 : h)} o'clock`;
+  if (r === 15) return `quarter past ${hour(h)}`;
+  if (r === 30) return `half past ${hour(h)}`;
+  if (r === 45) return `quarter to ${hour(h + 1)}`;
+  if (r < 30) return `${["", "five", "ten", "", "twenty", "twenty-five"][r / 5]} past ${hour(h)}`;
+  return `${["", "five", "ten", "", "twenty", "twenty-five"][(60 - r) / 5]} to ${hour(h + 1)}`;
+}
 
 // Short, honest label for why a Claude call failed.
 function failure(err: unknown) {
@@ -74,6 +90,7 @@ export class Agent {
   outTok = 0;
   private retryAt = 0;
   private busySince = 0;
+  private fastVoice = true;
   private lastSafetyNet = 0;
 
   private sim: Sim;
@@ -279,7 +296,7 @@ export class Agent {
     const sim = this.sim;
     // Rebuild a short alternating history from the voice transcript.
     const messages: Anthropic.MessageParam[] = [];
-    for (const v of sim.voice.slice(-8)) {
+    for (const v of sim.voice.slice(-4)) { // short context = fast answers
       const role = v.who === "barber" ? "user" : "assistant";
       const last = messages[messages.length - 1];
       if (last && last.role === role) last.content += "\n" + v.text;
@@ -290,15 +307,20 @@ export class Agent {
     lastUser.content = `[now ${clock(sim.t)}, queue ${sim.joinsPaused ? "closed" : "open"}, closing ${clock(sim.closeAt)}]\n${lastUser.content}`;
     for (let i = 0; i < 4; i++) {
       this.calls++;
-      const res = await this.create("voice", {
-        model: MODEL, max_tokens: 600, system: VOICE_SYSTEM, tools: VOICE_TOOLS, messages,
-        output_config: { effort: "low" },
-      });
-      
+      const params: any = { model: MODEL, max_tokens: 300, system: VOICE_SYSTEM, tools: VOICE_TOOLS, messages, output_config: { effort: "low" } };
+      if (this.fastVoice) params.thinking = { type: "between_tools" }; // no long thinking: spoken replies must be quick
+      let res;
+      try { res = await this.create("voice", params); }
+      catch (err) {
+        // If the API rejects the fast setting, drop it once and keep Claude, instead of going offline.
+        if (!(err instanceof Anthropic.BadRequestError) || !this.fastVoice) throw err;
+        this.fastVoice = false; delete params.thinking;
+        res = await this.create("voice", params);
+      }
       if (res.stop_reason === "refusal") return "";
       const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       const said = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim();
-      if (!uses.length || res.stop_reason !== "tool_use") return said;
+      if (!uses.length || res.stop_reason !== "tool_use") return said; // includes max_tokens: speak what we have
       messages.push({ role: "assistant", content: res.content }, {
         role: "user",
         content: uses.map((u) => ({ type: "tool_result" as const, tool_use_id: u.id, content: this.execVoice(u.name, u.input) })),
@@ -313,23 +335,23 @@ export class Agent {
     const t = text.toLowerCase();
     const num = Number((/(\d+)\s*more/.exec(t) ?? /\b(one|two|three|four|five)\s+more/.exec(t))?.[1]
       ?.replace("one", "1").replace("two", "2").replace("three", "3").replace("four", "4").replace("five", "5"));
-    if (/\b(close|stop|shut)\b/.test(t) && !/should we|or do we/.test(t)) { this.execVoice("close_queue", { reason: "barber said close" }); return `Done, the queue is closed. Everyone already in line still gets their cut.`; }
-    if (/\bopen\b/.test(t)) { this.execVoice("open_queue", { reason: "barber said open" }); return `Queue is open, boss. Let's make some heads look expensive.`; }
+    if (/\b(close|stop|shut)\b/.test(t) && !/should we|or do we/.test(t)) { this.execVoice("close_queue", { reason: "barber said close" }); return `Done, queue's closed. Everyone already in line still gets their cut, nobody leaves looking half finished.`; }
+    if (/\bopen\b/.test(t)) { this.execVoice("open_queue", { reason: "barber said open" }); return `${/morning|afternoon|day/.test(t) ? "Beautiful one indeed, boss! " : ""}Queue's open, let's make some heads look expensive.`; }
     if (/power|capacity|more|should we close/.test(t)) {
       const c = sim.capacity(num || 2);
       return c.fits
-        ? `Yes: with ${c.extraClients} more you're done around ${c.finishWithExtra}, closing is ${c.closingTime}. Tight but doable, hydrate those clippers.`
-        : `Honestly no: ${c.extraClients} more would run to ${c.finishWithExtra}, ${c.minutesOverOrUnder} minutes past closing. I'd close the queue, your back will thank me.`;
+        ? `${c.clientsToday} heads and still standing! Two more gets you done by ${spoken(c.finishWithExtra)}, ${c.minutesOverOrUnder > -20 ? "just before closing" : "well before closing"}, so yes, but hydrate those clippers.`.replace("Two more", c.extraClients === 2 ? "Two more" : `${c.extraClients} more`)
+        : `Honestly, boss, no. ${c.extraClients} more runs you to ${spoken(c.finishWithExtra)}, ${c.minutesOverOrUnder} minutes past closing, so I'd close it, your back will thank me.`;
     }
     if (/new|happen|update|news/.test(t)) {
       const ev = sim.recentEvents().filter((e) => !/walk-ins joined/.test(e)).slice(-3).map((e) => e.slice(6));
-      return ev.length && ev[0] !== "nothing new" ? `${ev.join(". ")}. Drama, but under control.` : `All quiet. Just you, the clippers and good vibes.`;
+      return ev.length && ev[0] !== "nothing new" ? `Oh, you'll like this. ${ev.join(". ")}. Drama, but under control.` : `All quiet, boss. Just you, the clippers and good vibes.`;
     }
     if (/today|looking|how/.test(t)) {
       const d = sim.daySummary();
-      return `You have ${d.clientsToday} clients today, ${d.waiting} waiting. At this pace you're done around ${d.finishAround}.`;
+      return `Looking good, boss! About ${d.clientsToday} heads today, ${d.waiting} still waiting, and you'll be done by ${spoken(d.finishAround)}.`;
     }
-    return `Didn't catch that over the clippers. Ask me how today looks, what's new, or open or close the queue.`;
+    return `Sorry boss, the clippers won that round. Ask me how today looks, what's new, or to open or close the queue.`;
   }
 
   async summary() {
