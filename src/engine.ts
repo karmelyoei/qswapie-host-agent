@@ -118,7 +118,7 @@ export class Sim {
       this.t = 9 * 60; this.staff = 1; this.joinsPaused = true; this.voiceMode = true; this.running = false;
       this.closeAt = 17 * 60; // the story: ten clients, finish at five (CLOSE_TIME does not apply here)
       const mk = (d: (typeof DAY)[number]) => this.makeGuest({ name: d.name, svc: d.svc, service: d.dur, expected: d.dur, away: false, swapOk: false, willNoShow: false, hurry: false, slotAt: d.at });
-      const paul = mk(DAY[0]); paul.joinedAt = 8 * 60 + 50; paul.status = "serving"; paul.startAt = 8 * 60 + 55; // 5 minutes into his cut at 09:00 paul.endAt = paul.startAt + paul.service;
+      const paul = mk(DAY[0]); paul.joinedAt = 8 * 60 + 50; paul.status = "serving"; paul.startAt = 8 * 60 + 55; paul.endAt = paul.startAt + paul.service; // 5 minutes into his cut at 09:00
       this.guests.push(paul);
       for (const d of DAY.slice(1, 3)) { const g = mk(d); g.joinedAt = 8 * 60 + 50; this.guests.push(g); this.line.push(g.id); g.messages.push({ t: this.t, text: `You're checked in at Kiez Cuts for a ${d.svc}.`, kind: "info", from: "system" }); }
       for (const d of DAY.slice(3)) { const g = mk(d); g.status = "booked"; g.joinedAt = 8 * 60; this.guests.push(g); g.messages.push({ t: this.t, text: `Booked at Kiez Cuts: ${d.svc} at ${clock(d.at!)}.`, kind: "info", from: "system" }); }
@@ -305,6 +305,23 @@ export class Sim {
     };
   }
 
+  // Today's book: every client of the day in planned order, with planned start time and state.
+  book() {
+    const rows: { id: string; name: string; svc: string; time: number; state: string; note?: string }[] = [];
+    let T = this.t;
+    const serving = this.guests.filter((g) => g.status === "serving");
+    for (const g of serving) { rows.push({ id: g.id, name: g.name, svc: g.svc ?? "cut", time: g.startAt ?? this.t, state: "in chair" }); T = Math.max(T, g.endAt ?? T); }
+    for (const g of this.guests.filter((x) => x.status === "called")) { const st = Math.max(T, g.arriveAt ?? T); rows.push({ id: g.id, name: g.name, svc: g.svc ?? "cut", time: st, state: "called" }); T = st + (g.expected ?? MEAN_SERVICE); }
+    for (const id of this.line) { const g = this.get(id)!; const st = Math.max(T, g.slotAt ?? 0); rows.push({ id: g.id, name: g.name, svc: g.svc ?? "cut", time: st, state: "waiting" }); T = st + (g.expected ?? MEAN_SERVICE); }
+    for (const g of this.guests.filter((x) => x.status === "booked").sort((a, b) => (a.slotAt ?? 0) - (b.slotAt ?? 0))) {
+      const st = Math.max(T, g.slotAt ?? 0); rows.push({ id: g.id, name: g.name, svc: g.svc ?? "cut", time: st, state: "booked" }); T = st + (g.expected ?? MEAN_SERVICE);
+    }
+    for (const g of this.guests.filter((x) => x.status === "done" || x.status === "noshow")) rows.push({ id: g.id, name: g.name, svc: g.svc ?? "cut", time: g.startAt ?? g.calledAt ?? 0, state: g.status === "done" ? "done" : "no-show" });
+    for (const g of this.guests.filter((x) => x.status === "left")) rows.push({ id: g.id, name: g.name, svc: g.svc ?? "cut", time: g.slotAt ?? g.joinedAt, state: "cancelled", note: g.name === "Lina" ? "rebooked tomorrow 10:00" : undefined });
+    rows.sort((a, b) => a.time - b.time);
+    return rows.map((r, i) => ({ ...r, n: i + 1, time: clock(r.time), isNew: r.name === "Max" }));
+  }
+
   private cutRange() {
     const cuts = this.guests.filter((g) => g.status === "waiting" || g.status === "called" || g.status === "serving" || g.status === "booked").map((g) => g.expected ?? MEAN_SERVICE);
     return cuts.length ? [Math.min(...cuts), Math.max(...cuts)] : [MEAN_SERVICE, MEAN_SERVICE];
@@ -448,9 +465,9 @@ export class Sim {
       if (p.at <= this.t) { this.pendingJoins.splice(this.pendingJoins.indexOf(p), 1); this.join(p.opts); }
     }
     for (const g of this.guests) {
-      if (g.status === "booked" && g.slotAt !== undefined && this.t >= g.slotAt - 5) {
+      if (g.status === "booked" && g.slotAt !== undefined && this.t >= g.slotAt - 30) {
         g.status = "waiting"; this.line.push(g.id);
-        g.messages.push({ t: this.t, text: `You're checked in for your ${g.svc ?? "cut"}.`, kind: "info", from: "system" });
+        g.messages.push({ t: this.t, text: `You're checked in for your ${g.svc ?? "cut"} at ${clock(g.slotAt)}.`, kind: "info", from: "system" });
         this.event(`${g.name} checked in for ${g.svc}`, false);
       }
     }

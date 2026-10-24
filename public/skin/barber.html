@@ -33,6 +33,8 @@
         <div class="shop-stat"><span>Waiting now</span><strong id="stWaiting">– <small>guests</small></strong></div>
         <div class="shop-stat"><span>Next up</span><strong class="next-guest" id="stNext">–</strong></div>
         <div class="chair-status"><span class="chair-icon" aria-hidden="true">✳</span><div><b>Chair 01</b><small id="chairText">–</small></div><i id="chairTag">IN SERVICE</i></div>
+        <div class="panel-kicker" style="margin-top:12px">TODAY'S BOOK</div>
+        <div class="book" id="book"></div>
         <div class="skin-ctl">
           <label>Closing <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></label>
           <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) stopAllSpeech('mute'); vctl()">🔊 Voice on</button>
@@ -150,13 +152,16 @@ document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && !e.repeat && !/INPUT|TEXTAREA|BUTTON|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); const o = $("startOverlay"); if (o && !o.classList.contains("gone")) beginHazel(); else startOrMic(); }
 });
 </script>
+<script src="/book.js"></script>
 <script src="/voice.js"></script>
 <script>if (!/[?&]debug=1/.test(location.search)) document.querySelectorAll(".debug-only").forEach((el) => el.style.display = "none");</script>
 <script>$("sttPick").value = sttChoice; $("wakeToggle").checked = wakeOn; setTimeout(() => { $("brainPick").value = brainChoice || (S && S.brain && S.brain.default) || "claude"; }, 900);</script>
 <script>
 function render() {
   if (!S) return;
-  $("voiceClock").textContent = S.now;
+  // Show the clock only once the story has started (after the tap), so an old time never shows.
+  $("voiceClock").textContent = $("startOverlay") && !$("startOverlay").classList.contains("gone") ? "--:--" : S.now;
+  if (S.book) $("book").innerHTML = bookHtml(S.book, null);
   const a = S.agent;
   $("mode").className = "mode-pill " + (a.mode === "AI" ? "ai" : "off");
   $("mode").textContent = a.mode === "AI" ? "● Claude live" : "● Offline rules";

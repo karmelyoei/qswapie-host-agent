@@ -115,7 +115,7 @@
 </header>
 <main>
   <section>
-    <h2>Live queue <span id="qcount"></span></h2>
+    <h2><span id="qtitle">Live queue</span> <span id="qcount"></span></h2>
     <div id="queue"></div>
   </section>
   <section>
@@ -137,6 +137,7 @@
     <div class="feed" id="feed"></div>
   </section>
 </main>
+<script src="/book.js"></script>
 <script>
 let S = null, sel = null, lastActKey = null, hopUntil = 0;
 const $ = (id) => document.getElementById(id);
@@ -187,7 +188,11 @@ function render() {
   const order = { serving: 0, called: 1, waiting: 2, booked: 3, noshow: 4, left: 4, done: 5 };
   const gs = [...S.guests].sort((x, y) => order[x.status] - order[y.status] || (x.place - y.place) || String(x.slotAt).localeCompare(String(y.slotAt)));
   $("qcount").textContent = `${S.stats.waiting} waiting · ~${S.stats.backlog} min deep`;
-  $("queue").innerHTML = gs.map(guestCard).join("");
+  if (S.book) {
+    $("qtitle").textContent = "Today's book";
+    $("queue").innerHTML = bookHtml(S.book, sel);
+    $("queue").querySelectorAll(".bk-row").forEach((el) => el.onclick = () => { sel = el.dataset.id; render(); });
+  } else { $("qtitle").textContent = "Live queue"; $("queue").innerHTML = gs.map(guestCard).join(""); }
 
   if (!sel || !S.guests.find(g => g.id === sel)) sel = (S.guests.find(g => g.hurry && g.status === "waiting") || S.guests.find(g => g.status === "waiting") || {}).id;
   const g = S.guests.find(x => x.id === sel);

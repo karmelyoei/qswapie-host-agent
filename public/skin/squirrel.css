@@ -79,3 +79,5 @@ body.voice-page { background: radial-gradient(1200px 700px at 50% 22%, #2a1a12 0
 .start-overlay.gone { opacity: 0; pointer-events: none; }
 @keyframes hz-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 @media (prefers-reduced-motion: reduce) { .start-overlay img { animation: none; } }
+
+.book { max-height: 34vh; overflow: auto; margin: 4px -6px 6px; padding-right: 4px; }

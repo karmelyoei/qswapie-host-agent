@@ -36,6 +36,7 @@ function state() {
     dayClosed: sim.dayClosed,
     summary: sim.summary,
     scenario: sim.scenario,
+    book: sim.scenario === "barber" ? sim.book() : null,
     voiceMode: sim.voiceMode,
     dayStarted: sim.dayStarted,
     barberName: sim.barberName,
@@ -77,7 +78,11 @@ async function action(body: any) {
       sim.log(agent.mode === "AI" ? "AI" : "offline", "summary", "End-of-day summary sent to owner", "day closed");
       break;
     }
-    case "reset": sim = new Sim(body.scenario === "barber" ? "barber" : "demo"); agent = new Agent(sim); break;
+    case "reset": {
+      sim = new Sim(body.scenario === "barber" ? "barber" : "demo"); agent = new Agent(sim);
+      if (sim.scenario === "barber") console.log(`[story] restart: ${clock(sim.t)} ${clock(sim.t) === "09:00" ? "OK" : "WRONG, expected 09:00"}, waiting ${sim.line.length}, clock ${sim.running ? "running" : "paused"}`);
+      break;
+    }
     case "startday": await agent.greet(); break;
     case "hold": sim.voiceHoldUntil = body.on ? Date.now() + Math.min(30000, Number(body.ms) || 15000) : 0; break; // clock pauses while the barber talks to Hazel
     case "closetime": { const m = /^(\d{1,2}):(\d{2})$/.exec(String(body.value)); if (m) sim.closeAt = Number(m[1]) * 60 + Number(m[2]); break; }
