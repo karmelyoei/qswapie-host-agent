@@ -53,3 +53,4 @@ button.suggestion { width: 100%; text-align: left; font: inherit; color: inherit
 .link-btn { padding: 2px 8px; font-size: 12px; }
 .caption-pip { background: var(--warm); }
 .assistant-avatar { background: linear-gradient(135deg, var(--warm), var(--amber)); color: #1b1208; }
+#mascot { width: 44px; height: 44px; flex-basis: 44px; border-radius: 50%; object-fit: contain; }

@@ -1,4 +1,4 @@
-# QSwapie Host Agent
+# Hazel · Host Agent (built on QSwapie)
 
 **A proactive AI host for walk-in venues, with a hands-free voice sidekick for the barber.**
 
