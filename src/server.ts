@@ -1,9 +1,11 @@
-// Local demo server: runs the simulation + agent and serves the UI. No external calls except the Anthropic API.
+// Local demo server: runs the simulation + agent and serves the UI.
+// External calls: the Anthropic API, and Reson8 speech-to-text (proxied here so its key never reaches the browser).
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { Sim, clock } from "./engine.ts";
 import { Agent } from "./agent.ts";
+import { WebSocketServer, WebSocket } from "ws";
 
 try { process.loadEnvFile(".env"); } catch { /* no .env: fine */ }
 
@@ -26,10 +28,15 @@ function state() {
     joinsPaused: sim.joinsPaused,
     dayClosed: sim.dayClosed,
     summary: sim.summary,
+    scenario: sim.scenario,
+    voiceMode: sim.voiceMode,
+    closeAt: clock(sim.closeAt),
+    voice: sim.voice.map((v) => ({ ...v, t: clock(v.t) })),
+    reson8: Boolean(process.env.RESON8_API_KEY),
     stats: sim.stats(),
     agent: agent.status(),
     line: sim.line,
-    guests: sim.guests.filter((g) => g.status !== "done" || sim.t - (g.endAt ?? 0) < 5).map((g) => ({
+    guests: sim.guests.filter((g) => (g.status !== "done" && g.status !== "left") || sim.t - (g.endAt ?? 0) < 5).map((g) => ({
       id: g.id, name: g.name, status: g.status, hurry: g.hurry, swapOk: g.swapOk, away: g.away, walk: g.walk,
       headedBack: g.headedBackAt !== undefined, wait: g.wait, quoted: g.quoted, place: sim.line.indexOf(g.id) + 1,
       calledMinAgo: g.calledAt !== undefined ? Math.round(sim.t - g.calledAt) : null,
@@ -58,11 +65,14 @@ async function action(body: any) {
       sim.log(agent.mode === "AI" ? "AI" : "offline", "summary", "End-of-day summary sent to owner", "day closed");
       break;
     }
-    case "reset": sim = new Sim(); agent = new Agent(sim); break;
+    case "reset": sim = new Sim(body.scenario === "barber" ? "barber" : "demo"); agent = new Agent(sim); break;
+    case "voicemode": sim.voiceMode = !sim.voiceMode; break;
+    case "closetime": { const m = /^(d{1,2}):(d{2})$/.exec(String(body.value)); if (m) sim.closeAt = Number(m[1]) * 60 + Number(m[2]); break; }
+    case "voice": { const text = String(body.text ?? "").trim().slice(0, 500); if (text) await agent.voice(text); break; }
   }
 }
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   try {
     if (req.url === "/api/state") {
       res.writeHead(200, { "content-type": "application/json" });
@@ -83,9 +93,32 @@ http.createServer(async (req, res) => {
   } catch {
     res.writeHead(500); res.end("error");
   }
-}).listen(PORT, "127.0.0.1", () => {
+});
+
+// Browser mic audio (16 kHz mono PCM s16le) -> Reson8 Turns -> transcripts back to the browser.
+const wss = new WebSocketServer({ server, path: "/stt" });
+wss.on("connection", (browser) => {
+  const key = process.env.RESON8_API_KEY;
+  if (!key) return browser.close(4001, "no Reson8 key");
+  const url = "wss://api.reson8.dev/v1/speech-to-text/turns?encoding=pcm_s16le&sample_rate=16000&channels=1&language=en";
+  const upstream = new WebSocket(url, { headers: { Authorization: `ApiKey ${key}` } });
+  const queued: Buffer[] = [];
+  upstream.on("open", () => { for (const b of queued.splice(0)) upstream.send(b); });
+  upstream.on("message", (data, isBinary) => { if (!isBinary && browser.readyState === WebSocket.OPEN) browser.send(data.toString()); });
+  upstream.on("unexpected-response", (_req, r) => { browser.close(4002, `Reson8 HTTP ${r.statusCode}`); upstream.terminate(); });
+  upstream.on("error", () => { if (browser.readyState === WebSocket.OPEN) browser.close(4002, "Reson8 error"); });
+  upstream.on("close", (code) => { if (browser.readyState === WebSocket.OPEN) browser.close(4002, `Reson8 closed ${code}`); });
+  browser.on("message", (data, isBinary) => {
+    if (isBinary) { if (upstream.readyState === WebSocket.OPEN) upstream.send(data as Buffer); else if (upstream.readyState === WebSocket.CONNECTING) queued.push(data as Buffer); }
+    else if (upstream.readyState === WebSocket.OPEN) upstream.send(data.toString()); // e.g. flush_request
+  });
+  browser.on("close", () => upstream.close());
+});
+
+server.listen(PORT, "127.0.0.1", () => {
   console.log(`QSwapie Host Agent running at http://localhost:${PORT}`);
   console.log(`Agent mode: ${agent.mode}${agent.offlineReason ? ` (${agent.offlineReason})` : ""}`);
+  console.log(`Speech-to-text: ${process.env.RESON8_API_KEY ? "Reson8" : "browser fallback (no RESON8_API_KEY)"}`);
 });
 
 // When the guest entered their current state; messages from before it are shown greyed out.

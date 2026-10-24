@@ -1,6 +1,6 @@
 // Simulated walk-in queue. All guests are fake; nothing talks to QSwapie.
 
-export type Status = "waiting" | "called" | "serving" | "done" | "noshow";
+export type Status = "waiting" | "called" | "serving" | "done" | "noshow" | "left";
 
 export interface Msg { t: number; text: string; kind: string; from: "agent" | "system" }
 
@@ -32,6 +32,7 @@ export interface OwnerAlert { id: number; t: number; text: string; reason: strin
 
 export interface Swap { id: number; a: string; b: string; t: number; status: "proposed" | "accepted" | "declined" }
 
+const BARBER_NAMES = ["Paul", "Ben", "Lina", "Ada", "Mo", "Sara", "Jonas", "Emma", "Theo", "Nora", "Max", "Ida", "Karl", "Rosa", "Finn", "Lea", "Oskar", "Hanna", "Emil", "Zoe"];
 const NAMES = ["Mia", "Leo", "Noah", "Emma", "Ben", "Lina", "Paul", "Ella", "Finn", "Lea", "Jonas", "Mila", "Elias", "Clara", "Anton", "Ida", "Theo", "Nora", "Max", "Ava", "Luca", "Zoe", "Emil", "Lotta", "Karl", "Rosa", "Milan", "Frida", "Oskar", "Hanna"];
 export const MEAN_SERVICE = 12;
 const NO_SHOW_FAILSAFE = 12; // engine gives up on a called guest after this many minutes if nobody acts
@@ -69,7 +70,33 @@ export class Sim {
   private nextAlertId = 1;
   private nextSwapId = 1;
 
-  constructor() {
+  // Barber voice mode
+  scenario: "demo" | "barber";
+  closeAt = 19 * 60;
+  voiceMode = false;
+  events: { t: number; text: string; notable: boolean }[] = [];
+  eventsCursor = 0; // recent_events reports from here
+  spokenCursor = 0; // proactive voice reports from here
+  voice: { id: number; t: number; who: "barber" | "agent"; text: string; proactive?: boolean }[] = [];
+  private nextVoiceId = 1;
+  private names = NAMES;
+  private scheduled: { at: number; run: () => void }[] = [];
+  private scriptStarted = false;
+
+  constructor(scenario: "demo" | "barber" = "demo") {
+    this.scenario = scenario;
+    const close = /^(\d{1,2}):(\d{2})$/.exec(process.env.CLOSE_TIME ?? "");
+    if (close) this.closeAt = Number(close[1]) * 60 + Number(close[2]);
+    if (scenario === "barber") {
+      // One barber, queue still closed. Opening it by voice starts the scripted day.
+      this.names = BARBER_NAMES;
+      this.t = 15 * 60 + 30; this.staff = 1; this.joinsPaused = true; this.voiceMode = true;
+      const g = this.makeGuest({ away: false, service: 14 });
+      g.joinedAt = this.t - 10; g.status = "serving"; g.startAt = this.t - 2; g.endAt = g.startAt + g.service;
+      this.guests.push(g);
+      this.recompute();
+      return;
+    }
     for (let i = 0; i < 2; i++) {
       const g = this.makeGuest({ away: false });
       g.joinedAt = this.t - 20;
@@ -85,7 +112,7 @@ export class Sim {
     const r = this.rand;
     return {
       id: "g" + this.nextId++,
-      name: NAMES[this.nameIdx++ % NAMES.length],
+      name: this.names[this.nameIdx++ % this.names.length],
       joinedAt: this.t,
       status: "waiting",
       hurry: false,
@@ -109,7 +136,104 @@ export class Sim {
     g.quoted = g.wait;
     this.sys(g, `You're in line at Kiez Cuts. Place ${this.line.length}. We'll tell you when to come back.`);
     if (!quiet) this.signal(`${g.name} joined (place ${this.line.length}${g.away ? ", waiting away" : ", in the shop"})`);
+    if (!quiet) this.event(`${g.name} joined the queue`, false);
     return g;
+  }
+
+  event(text: string, notable = true) {
+    this.events.push({ t: this.t, text, notable });
+  }
+
+  say(who: "barber" | "agent", text: string, proactive = false) {
+    this.voice.push({ id: this.nextVoiceId++, t: this.t, who, text, proactive });
+    if (this.voice.length > 40) this.voice.shift();
+  }
+
+  cancel(id: string) {
+    const g = this.get(id);
+    if (!g || g.status !== "waiting") return;
+    g.status = "left"; g.endAt = this.t;
+    this.sys(g, "You left the queue. Hope to see you another time!");
+    this.signal(`${g.name} cancelled and left the queue`);
+    this.event(`${g.name} cancelled and walked away`);
+    this.recompute();
+  }
+
+  setJoins(open: boolean, by: string) {
+    this.joinsPaused = !open;
+    this.event(`${by} ${open ? "opened" : "closed"} the queue`, false);
+    this.signal(`${by} ${open ? "opened" : "closed"} new joins`);
+    if (open && this.scenario === "barber" && !this.scriptStarted) this.startBarberDay();
+  }
+
+  // Scripted afternoon for the voice demo: 9 walk-ins right away, Ada in a hurry, Lina cancels, 6 more later.
+  private startBarberDay() {
+    this.scriptStarted = true;
+    const at = (dt: number, run: () => void) => this.scheduled.push({ at: this.t + dt, run });
+    const first: Partial<Guest>[] = [{ swapOk: true }, {}, { away: false }, {}, {}, {}, {}, {}, {}];
+    first.forEach((o, i) => at(0.2 + i * 0.25, () => this.join({ swapOk: false, willNoShow: false, ...o })));
+    const ada = () => this.guests.find((g) => g.name === "Ada");
+    const lina = () => this.guests.find((g) => g.name === "Lina");
+    at(3, () => { const g = ada(); if (g) this.setHurry(g.id); });
+    at(5, () => { const g = lina(); if (g) this.cancel(g.id); });
+    [9, 11, 13, 15, 17, 19].forEach((m) => at(m, () => this.join({ swapOk: false, willNoShow: false })));
+  }
+
+  // Minutes of work left for all chairs, and when the last client will be done.
+  finishAt(extra = 0) {
+    let work = 0;
+    for (const g of this.guests) {
+      if (g.status === "serving") work += Math.max(0, (g.endAt ?? 0) - this.t);
+      if (g.status === "called") work += Math.max(0, (g.arriveAt ?? this.t) - this.t) + MEAN_SERVICE;
+    }
+    work += (this.line.length + extra) * MEAN_SERVICE;
+    return Math.round(this.t + work / Math.max(1, this.staff));
+  }
+
+  daySummary() {
+    const today = this.guests.filter((g) => g.status !== "left" && g.status !== "noshow");
+    return {
+      now: clock(this.t), queueOpen: !this.joinsPaused, closingTime: clock(this.closeAt), barbers: this.staff,
+      clientsToday: today.length, served: this.guests.filter((g) => g.status === "done").length,
+      inChair: this.guests.filter((g) => g.status === "serving").map((g) => g.name),
+      waiting: this.line.length, cancelled: this.guests.filter((g) => g.status === "left").length,
+      noShows: this.guests.filter((g) => g.status === "noshow").length,
+      avgCutMin: MEAN_SERVICE, finishAround: clock(this.finishAt()),
+    };
+  }
+
+  capacity(extra: number) {
+    const per = MEAN_SERVICE / Math.max(1, this.staff);
+    const finish = this.finishAt(extra);
+    const spare = Math.floor((this.closeAt - this.finishAt()) / per);
+    return {
+      extraClients: extra, closingTime: clock(this.closeAt), finishWithExtra: clock(finish),
+      fits: finish <= this.closeAt, minutesOverOrUnder: Math.round(finish - this.closeAt),
+      spareSlotsBeforeClose: Math.max(0, spare), clientsToday: this.daySummary().clientsToday,
+    };
+  }
+
+  // Proactive voice: when a cut finishes, briefly tell the barber what happened meanwhile.
+  private betweenCuts() {
+    if (!this.voiceMode) return;
+    const news = this.events.slice(this.spokenCursor).filter((e) => e.notable).map((e) => e.text);
+    this.spokenCursor = this.events.length;
+    const next = this.get(this.line[0] ?? "");
+    const quips = ["Fresh fade, fresh news.", "Clippers down, ears up.", "Quick one between cuts."];
+    const parts = [quips[this.voice.length % quips.length]];
+    if (news.length) parts.push(news.slice(-2).join(". ") + ".");
+    if (!news.length) return;
+    if (next) parts.push(`${next.name} is next.`);
+    this.say("agent", parts.join(" "), true);
+  }
+
+  recentEvents() {
+    const fresh = this.events.slice(this.eventsCursor);
+    this.eventsCursor = this.events.length;
+    const out = fresh.filter((e) => e.notable).map((e) => `${clock(e.t)} ${e.text}`);
+    const joins = fresh.filter((e) => e.text.endsWith("joined the queue")).length;
+    if (joins) out.push(`${clock(this.t)} ${joins} new walk-ins joined`);
+    return out.length ? out : ["nothing new"];
   }
 
   get(id: string) { return this.guests.find((g) => g.id === id); }
@@ -174,6 +298,7 @@ export class Sim {
     if (!g || g.status !== "called") return "error: only a called guest can be marked no-show";
     if (this.t - (g.calledAt ?? this.t) < 3) return "error: give them at least 3 minutes";
     g.status = "noshow"; g.endAt = this.t;
+    this.event(`${g.name} did not show up, the line moved up`);
     this.sys(g, "We called you but you did not arrive, so your place was released. Scan the QR again to rejoin.");
     this.recompute();
     return `${g.name} marked no-show; next guest called`;
@@ -209,10 +334,13 @@ export class Sim {
     for (const p of [...this.pendingJoins]) {
       if (p.at <= this.t) { this.pendingJoins.splice(this.pendingJoins.indexOf(p), 1); this.join(p.opts); }
     }
-    if (!this.joinsPaused && r() < 0.06 * dt) this.join({ willNoShow: r() < 0.1 });
+    for (const s of [...this.scheduled]) {
+      if (s.at <= this.t) { this.scheduled.splice(this.scheduled.indexOf(s), 1); s.run(); }
+    }
+    if (this.scenario === "demo" && !this.joinsPaused && r() < 0.06 * dt) this.join({ willNoShow: r() < 0.1 });
 
     for (const g of this.guests) {
-      if (g.status === "serving" && this.t >= (g.endAt ?? 0)) { g.status = "done"; }
+      if (g.status === "serving" && this.t >= (g.endAt ?? 0)) { g.status = "done"; this.event(`${g.name} is done`, false); this.betweenCuts(); }
       if (g.status === "called") {
         if (!g.willNoShow && this.t >= (g.arriveAt ?? 0)) {
           g.status = "serving"; g.startAt = this.t; g.endAt = this.t + g.service;
@@ -239,6 +367,7 @@ export class Sim {
           this.sys(ga, `${gb.name} agreed. You moved up to place ${ib + 1}.`);
           this.sys(gb, `Thanks! You are now place ${ia + 1}. We'll message you before your turn.`);
           this.log("sim", "swap", `${gb.name} accepted the swap with ${ga.name}`, "guest tapped accept");
+          this.event(`${gb.name} swapped with ${ga.name}${ga.hurry ? `, ${ga.name} was in a hurry` : ""}`);
           this.signal(`${gb.name} accepted the swap; ${ga.name} is now place ${ib + 1}`);
         } else {
           s.status = "declined";

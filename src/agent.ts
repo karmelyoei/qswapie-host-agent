@@ -37,6 +37,21 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+const VOICE_SYSTEM = `You are Fade, the AI host of Kiez Cuts, a walk-in barbershop on the QSwapie digital queue. The barber talks to you hands-free while cutting hair, and your answer is spoken out loud.
+Style: max 2 short sentences, warm and funny barbershop banter, but always useful. Plain words, no lists, no markdown, no emojis. Say times like 18:40.
+Never guess numbers: use day_summary, estimate_finish, capacity_check, recent_events for facts. When the barber asks to open or close the queue, call open_queue or close_queue, then confirm.
+For "should we close or take N more": run capacity_check with N and give a clear yes or no with the finish time vs closing time.
+For "anything new": run recent_events and mention cancellations, swaps and no-shows, skip routine joins.`;
+
+const VOICE_TOOLS: Anthropic.Tool[] = [
+  { name: "day_summary", description: "Today's numbers: clients today, served, waiting, who is in the chair, queue open or closed, closing time, estimated finish.", input_schema: { type: "object", properties: {} } },
+  { name: "estimate_finish", description: "When the last client in line will be done at the current pace.", input_schema: { type: "object", properties: {} } },
+  { name: "capacity_check", description: "Can the shop take extra clients before closing time? Returns finish time with the extra clients and whether it fits.", input_schema: { type: "object", properties: { extra_clients: { type: "integer" } }, required: ["extra_clients"] } },
+  { name: "open_queue", description: "Open the queue so new walk-ins can join.", input_schema: { type: "object", properties: { reason } } },
+  { name: "close_queue", description: "Close the queue for new walk-ins. People already in line stay.", input_schema: { type: "object", properties: { reason } } },
+  { name: "recent_events", description: "What happened since the barber last asked: cancellations, swaps, no-shows, joins.", input_schema: { type: "object", properties: {} } },
+];
+
 export class Agent {
   client: Anthropic | null;
   mode: "AI" | "offline";
@@ -199,6 +214,91 @@ export class Agent {
     const ns = sim.agentView().noShowsLast30;
     if (ns >= 2) this.exec("alert_owner", { text: `${ns} no-shows in 30 min. Line moved up, next guests called.`, suggested_action: "none", reason: "no-show spike" }, "offline");
     if (sim.joinsPaused && st.backlog < 20) this.exec("alert_owner", { text: `Queue is down to ${st.backlog} min. Open joins again?`, suggested_action: "resume_joins", reason: "backlog back under 20 min" }, "offline");
+  }
+
+  // ---- Barber voice mode: the barber talks, the agent answers out loud ----
+
+  private execVoice(name: string, input: any): string {
+    const sim = this.sim;
+    switch (name) {
+      case "day_summary": return JSON.stringify(sim.daySummary());
+      case "estimate_finish": return JSON.stringify({ finishAround: clock(sim.finishAt()), closingTime: clock(sim.closeAt), waiting: sim.line.length });
+      case "capacity_check": return JSON.stringify(sim.capacity(Math.max(0, Math.round(Number(input.extra_clients) || 0))));
+      case "open_queue": sim.setJoins(true, "Barber"); sim.log(this.mode, "open_queue", "Queue opened for new walk-ins", input.reason ?? "barber asked"); return "queue is open";
+      case "close_queue": sim.setJoins(false, "Barber"); sim.log(this.mode, "close_queue", "Queue closed for new walk-ins", input.reason ?? "barber asked"); return "queue is closed for new joins; people already in line stay";
+      case "recent_events": return JSON.stringify(sim.recentEvents());
+      default: return "error: unknown tool";
+    }
+  }
+
+  async voice(text: string) {
+    const sim = this.sim;
+    sim.say("barber", text);
+    let reply = "";
+    if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
+      try { reply = await this.voiceClaude(); }
+      catch (err) { this.goOffline(err instanceof Anthropic.APIError ? `API error ${err.status ?? "network"}` : "agent error"); }
+    }
+    if (!reply) reply = this.voiceRules(text);
+    sim.say("agent", reply);
+    return reply;
+  }
+
+  private async voiceClaude() {
+    const sim = this.sim;
+    // Rebuild a short alternating history from the voice transcript.
+    const messages: Anthropic.MessageParam[] = [];
+    for (const v of sim.voice.slice(-8)) {
+      const role = v.who === "barber" ? "user" : "assistant";
+      const last = messages[messages.length - 1];
+      if (last && last.role === role) last.content += "\n" + v.text;
+      else messages.push({ role, content: v.text });
+    }
+    while (messages.length && messages[0].role !== "user") messages.shift();
+    const lastUser = messages[messages.length - 1];
+    lastUser.content = `[now ${clock(sim.t)}, queue ${sim.joinsPaused ? "closed" : "open"}, closing ${clock(sim.closeAt)}]\n${lastUser.content}`;
+    for (let i = 0; i < 4; i++) {
+      this.calls++;
+      const res = await this.client!.messages.create({
+        model: MODEL, max_tokens: 600, system: VOICE_SYSTEM, tools: VOICE_TOOLS, messages,
+        output_config: { effort: "low" },
+      });
+      this.inTok += res.usage.input_tokens; this.outTok += res.usage.output_tokens;
+      if (res.stop_reason === "refusal") return "";
+      const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+      const said = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim();
+      if (!uses.length || res.stop_reason !== "tool_use") return said;
+      messages.push({ role: "assistant", content: res.content }, {
+        role: "user",
+        content: uses.map((u) => ({ type: "tool_result" as const, tool_use_id: u.id, content: this.execVoice(u.name, u.input) })),
+      });
+    }
+    return "";
+  }
+
+  // Offline voice: keyword intents with the same tools and canned banter.
+  private voiceRules(text: string) {
+    const sim = this.sim;
+    const t = text.toLowerCase();
+    const num = Number((/(\d+)\s*more/.exec(t) ?? /\b(one|two|three|four|five)\s+more/.exec(t))?.[1]
+      ?.replace("one", "1").replace("two", "2").replace("three", "3").replace("four", "4").replace("five", "5"));
+    if (/\b(close|stop|shut)\b/.test(t) && !/should we|or do we/.test(t)) { this.execVoice("close_queue", { reason: "barber said close" }); return `Done, the queue is closed. Everyone already in line still gets their cut.`; }
+    if (/\bopen\b/.test(t)) { this.execVoice("open_queue", { reason: "barber said open" }); return `Queue is open, boss. Let's make some heads look expensive.`; }
+    if (/power|capacity|more|should we close/.test(t)) {
+      const c = sim.capacity(num || 2);
+      return c.fits
+        ? `Yes: with ${c.extraClients} more you're done around ${c.finishWithExtra}, closing is ${c.closingTime}. Tight but doable, hydrate those clippers.`
+        : `Honestly no: ${c.extraClients} more would run to ${c.finishWithExtra}, ${c.minutesOverOrUnder} minutes past closing. I'd close the queue, your back will thank me.`;
+    }
+    if (/new|happen|update|news/.test(t)) {
+      const ev = sim.recentEvents().filter((e) => !/walk-ins joined/.test(e)).slice(-3).map((e) => e.slice(6));
+      return ev.length && ev[0] !== "nothing new" ? `${ev.join(". ")}. Drama, but under control.` : `All quiet. Just you, the clippers and good vibes.`;
+    }
+    if (/today|looking|how/.test(t)) {
+      const d = sim.daySummary();
+      return `You have ${d.clientsToday} clients today, ${d.waiting} waiting. At this pace you're done around ${d.finishAround}.`;
+    }
+    return `Didn't catch that over the clippers. Ask me how today looks, what's new, or open or close the queue.`;
   }
 
   async summary() {
