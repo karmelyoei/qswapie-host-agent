@@ -70,3 +70,12 @@ body.voice-page { background: radial-gradient(1200px 700px at 50% 22%, #2a1a12 0
 .mic-meter { width:90px; height:6px; border-radius:3px; background:#ffffff1f; overflow:hidden; flex:none; }
 .mic-meter i { display:block; height:100%; width:0; background:linear-gradient(90deg,#66e0b0,#ffb27a); transition:width .1s; }
 .latency { display:inline-block; margin-left:8px; color:#ffb27a; font:600 12px ui-monospace, monospace; }
+
+.start-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; cursor: pointer; text-align: center;
+  background: radial-gradient(900px 600px at 50% 40%, #3a2216ee, #0d0907f2); color: #f6e7cf; transition: opacity .35s; }
+.start-overlay img { width: min(42vw, 240px); height: auto; filter: drop-shadow(0 0 30px #ff9a5a66); animation: hz-float 3s ease-in-out infinite; }
+.start-overlay h2 { margin: 18px 0 6px; font-size: clamp(22px, 3vw, 34px); color: #ffd2a8; }
+.start-overlay p { margin: 0; color: #e8d6bd; }
+.start-overlay.gone { opacity: 0; pointer-events: none; }
+@keyframes hz-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@media (prefers-reduced-motion: reduce) { .start-overlay img { animation: none; } }

@@ -11,6 +11,10 @@
   <link rel="stylesheet" href="/skin/squirrel.css">
 </head>
 <body class="voice-page">
+  <!-- One tap anywhere: browsers need a gesture for the mic and audio. It also starts the story fresh. -->
+  <div id="startOverlay" class="start-overlay" onclick="beginHazel()" role="button" tabindex="0" aria-label="Tap anywhere to start Hazel">
+    <div><img src="/img/hazel.webp" alt="" width="220"><h2>Tap anywhere to start Hazel</h2><p>After that, just talk. Hazel is always listening.</p></div>
+  </div>
   <div class="voice-app">
     <header class="voice-header">
       <a class="voice-brand" href="/" target="_blank" aria-label="QSwapie queue dashboard">
@@ -87,7 +91,7 @@
         </div>
         <div class="stt-debug"><div class="mic-meter"><i id="micLevel"></i></div><span id="heard"></span></div>
         <p class="prompt-line" id="interim">Say “Hey Hazel, how are we doing?”</p>
-        <button id="startBtn" class="start-day" type="button" onclick="startDay()">🎙 Start listening</button>
+        <button id="startBtn" class="start-day hidden" type="button" onclick="startDay()">🎙 Start listening</button>
         <div class="voice-controls">
           <button class="mic-button" id="micBtn" type="button" onclick="startOrMic()" aria-label="Start voice conversation"><span class="mic-icon" aria-hidden="true"></span><span class="mic-ripple"></span></button>
           <span class="mic-hint">TAP ONCE, THEN SAY “HEY HAZEL” <kbd>SPACE</kbd></span> <span class="latency" id="latency" title="time to Hazel's first spoken word"></span>
@@ -121,7 +125,17 @@ function startDay() {
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
   if (!listening) toggleMic();
 }
-function startOrMic() { toggleMic(); }
+function startOrMic() { toggleMic(); } // after the start tap the mic button is just a mute toggle for listening
+// The one start tap: unlock audio, restart the story (09:00, clock paused), then listen hands-free from now on.
+async function beginHazel() {
+  const o = $("startOverlay"); if (!o || o.dataset.busy) return; o.dataset.busy = "1";
+  try { const ctx = new AudioContext(); await ctx.resume(); const g = ctx.createGain(); g.gain.value = 0; const osc = ctx.createOscillator(); osc.connect(g).connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.05); } catch {}
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
+  stopAllSpeech();
+  await act({ type: "reset", scenario: "barber" });
+  o.classList.add("gone");
+  if (!listening) toggleMic();
+}
 // Skin hook called by voice.js on every state change.
 window.onVoiceState = (state) => {
   $("avail").textContent = { idle: "READY", listening: "LISTENING", thinking: "THINKING", speaking: "TALKING" }[state];
@@ -129,7 +143,7 @@ window.onVoiceState = (state) => {
   $("micBtn").setAttribute("aria-label", state === "listening" ? "Stop listening" : "Start voice conversation");
 };
 document.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && !e.repeat && !/INPUT|TEXTAREA|BUTTON|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); startOrMic(); }
+  if (e.code === "Space" && !e.repeat && !/INPUT|TEXTAREA|BUTTON|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); const o = $("startOverlay"); if (o && !o.classList.contains("gone")) beginHazel(); else startOrMic(); }
 });
 </script>
 <script src="/voice.js"></script>
@@ -152,7 +166,7 @@ function render() {
   $("chairText").textContent = chair ? `${chair.name} in the chair` : "Free";
   $("chairTag").textContent = chair ? "IN SERVICE" : "FREE";
   $("footNote").textContent = `Queue ${S.joinsPaused ? "closed" : "open"} · ${S.stats.served} served · closing ${S.closeAt}`;
-  $("startBtn").classList.toggle("hidden", listening);
+  $("startBtn").classList.add("hidden");
   renderVoice();
   if (!thinking && !listening && $("interim").textContent === "") $("interim").textContent = "Say “Hey Hazel, how are we doing?”";
 }

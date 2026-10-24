@@ -62,7 +62,7 @@ No keys? It still runs: see [Fallbacks](#fallbacks).
 | `ANTHROPIC_API_KEY` | none | Claude for the queue agent and Hazel. Without it: offline rules |
 | `RESON8_API_KEY` | none | Reson8 live speech-to-text. Without it: browser speech recognition |
 | `BARBER_NAME` | `Nico` | The barber's name in the voice page and Hazel's lines |
-| `CLOSE_TIME` | `19:00` (17:30 on the morning shift) | Shop closing time for the capacity checks (also editable on the page) |
+| `CLOSE_TIME` | `19:00` (busy demo only; the barber story always closes at 17:00) | Shop closing time for the capacity checks (also editable on the page) |
 | `PORT` | `5173` | HTTP port |
 | `AGENT_MAX_CALLS` | `150` | Hard cap on Claude calls per server run |
 | `OPENAI_API_KEY` | none | Hazel's voice via OpenAI text-to-speech (server-side only). Without it: the browser voice |
@@ -80,8 +80,8 @@ Keys are read only by the server and never sent to the browser or written to log
 The story is scripted and the same on every run. Put `/` (queue) and `/barber` (Hazel) side by side.
 
 **Part 1: Nico and Hazel (about 90 s), on `/barber`**
-1. Click **Restart day** if needed. It's 09:00 and the clock is paused. The queue page shows 10 clients for today: **Paul** in the chair, **Alex** waiting (skin fade, about 40 min), then **Tobi** (beard trim and line-up, about 30 min), and the rest booked later in the day, each with a service.
-2. Tap **🎙 Start listening** once (browsers need one tap for the mic). The wake word is **off** by default, so just talk.
+1. Open `/barber` and **tap anywhere** on the "Tap anywhere to start Hazel" screen (browsers need one tap for the mic and audio). That tap restarts the story: it's 09:00, closing at 17:00, and the clock is paused. The queue page shows 10 clients for today: **Paul** in the chair, **Alex** waiting (skin fade, about 40 min), then **Tobi** (beard trim and line-up, about 30 min), and the rest booked later in the day, each with a service.
+2. From now on Hazel is always listening, hands-free. The wake word is **off** by default, so just talk; the mic button only mutes listening.
 3. Nico: *"Morning Hazel, how's today looking?"* Hazel: *"Morning Nico! You've got 10 clients today, done around five. Two are waiting: Alex is next for a skin fade, then Tobi for a beard trim and line-up. Want me to add more clients, or finish at five?"*
 4. Nico: *"Five is good, finish at five. If someone cancels, let me know."* Hazel: *"Deal, closing the list at ten, done by five. I'll shout if anyone bails."* The queue stays closed and the clock starts (1 sim minute per second). The waiting count changes only as the day plays out.
 5. **About 10:30 Lina cancels her 1 pm booking.** On her phone on `/`, the agent asks why ("work came up") and rebooks her for tomorrow 10:00. The clock pauses and Hazel asks: *"Heads up Nico: Lina cancelled for 1 pm, work came up, rebooked for tomorrow. Should I open her spot for someone new, or move everyone up a slot and finish earlier?"*

@@ -111,7 +111,7 @@ export class Sim {
       // The clock waits for the barber's go-ahead by voice; the day's events are scripted so every run is the same.
       this.names = MORNING_NAMES;
       this.t = 9 * 60; this.staff = 1; this.joinsPaused = true; this.voiceMode = true; this.running = false;
-      if (!close) this.closeAt = 17 * 60 + 30;
+      this.closeAt = 17 * 60; // the story: ten clients, finish at five (CLOSE_TIME does not apply here)
       const mk = (d: (typeof DAY)[number]) => this.makeGuest({ name: d.name, svc: d.svc, service: d.dur, expected: d.dur, away: false, swapOk: false, willNoShow: false, hurry: false, slotAt: d.at });
       const paul = mk(DAY[0]); paul.joinedAt = 8 * 60 + 50; paul.status = "serving"; paul.startAt = 8 * 60 + 55; paul.endAt = paul.startAt + paul.service;
       this.guests.push(paul);
