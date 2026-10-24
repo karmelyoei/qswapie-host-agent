@@ -37,13 +37,13 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-const VOICE_SYSTEM = `You are Fade, the cheeky, warm sidekick of a barber at Kiez Cuts, a walk-in barbershop on the QSwapie queue. The barber talks to you hands-free while cutting hair; your reply is spoken out loud, like a friend in the shop.
+const VOICE_MODEL = "claude-haiku-5-5"; // fast first word for spoken replies; the guest agent stays on Sonnet
+const VOICE_SYSTEM = `You are Hazel, the barbershop squirrel sidekick at Kiez Cuts, a walk-in barbershop running on the QSwapie queue idea. The barber talks to you hands-free while cutting hair; your reply is spoken out loud.
 How you talk:
 - 1 to 2 short sentences, about 25 words max. Casual spoken English, contractions, no lists, no markdown, no emojis.
-- First react to what the barber said ("Beautiful morning indeed, boss!"), then give the answer.
-- At most one light joke per reply. Warm, never sarcastic about guests.
-- Say numbers and times the way people speak: "about ten heads today", "done by twenty to six", "half past five".
-Facts: every number comes from a tool, never guess. day_summary for today, estimate_finish for the finish time, capacity_check for "can we take N more" (give a clear yes or no and the finish time vs closing), recent_events for "anything new" (mention cancellations, swaps, no-shows; skip routine joins). open_queue / close_queue when the barber asks, then confirm.`;
+- React to what the barber said first, then answer. Warm and cheeky; a nut or squirrel pun only now and then, never forced.
+- Say numbers and times the way people speak: "about ten heads", "done by five", "half past two".
+Facts: use ONLY the numbers in the [state] block or from tools; never guess. open_queue / close_queue when the barber asks, then confirm. capacity_check only for a different number of extra clients than the state shows.`;
 
 const VOICE_TOOLS: Anthropic.Tool[] = [
   { name: "day_summary", description: "Today's numbers: clients today, served, waiting, who is in the chair, queue open or closed, closing time, estimated finish.", input_schema: { type: "object", properties: {} } },
@@ -127,6 +127,7 @@ export class Agent {
     }
     if (this.client && this.mode === "AI" && this.calls >= MAX_CALLS) { this.mode = "offline"; this.offlineReason = "token budget reached"; }
 
+    sim.agentMode = this.mode;
     if (this.mode === "AI") {
       this.busy = true; this.busySince = now;
       try { await this.runClaude(signals); }
@@ -279,35 +280,89 @@ export class Agent {
     }
   }
 
-  async voice(text: string) {
-    const sim = this.sim;
-    sim.say("barber", text);
-    let reply = "";
-    if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
-      try { reply = await this.voiceClaude(); }
-      catch (err) { this.goOffline(failure(err)); }
-    }
-    if (!reply) reply = this.voiceRules(text);
-    sim.say("agent", reply);
-    return reply;
-  }
+  async voice(text: string) { return this.voiceTurn(text, () => {}); }
 
-  // Barber taps "Start day": the clock starts and Fade greets them proactively with today's outlook.
+  // The barber said the wake word for the first time: Hazel greets them with today's outlook.
   async greet() {
     const sim = this.sim;
     if (sim.dayStarted) return;
     sim.startDay();
+    const d = sim.daySummary();
+    const [lo, hi] = d.cutMinutes;
+    const reply = sim.scenario === "barber"
+      ? `Hey ${sim.barberName}! Today's gonna be packed: you've got ${d.clientsToday} clients, about ${lo} to ${hi} minutes each, so you'll be done around ${spoken(d.finishAround)}. Want me to open the queue for a couple more, say two extra?`
+      : `Hey ${sim.barberName}! ${d.clientsToday} clients today, ${d.waiting} waiting, done around ${spoken(d.finishAround)}.`;
+    sim.say("agent", reply, true);
+  }
+
+  // One voice turn. write() receives the reply text as it streams, so the browser can start speaking early.
+  async voiceTurn(text: string, write: (delta: string) => void) {
+    const sim = this.sim;
+    const t0 = Date.now();
+    sim.say("barber", text);
     let reply = "";
-    if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
-      const prompt = `[${sim.barberName} just opened the barber screen and tapped Start day. Nobody asked you anything: greet ${sim.barberName} first, casually and by name, then give today's outlook from day_summary: clients today, first one in nextChairFreeInMin minutes, finish time. Like: "Hey ${sim.barberName}, what's up? Today's gonna be packed: ..."]`;
-      try { reply = await this.voiceClaude([{ role: "user", content: prompt }]); }
+    if (sim.scenario === "barber" && sim.dayStarted && !sim.running) {
+      // Go-ahead after the greeting: decide on extra walk-ins and start the clock.
+      const t = text.toLowerCase();
+      const open = /\b(yes|yeah|sure|open|go for it|do it)\b/.test(t) && !/\b(no|nope|enough|closed?)\b/.test(t);
+      sim.go(open);
+      reply = open
+        ? `You got it, ${sim.barberName}: two extra spots are open, and I'll handle cancels, swaps and rebooking. Let's go!`
+        : `Deal, ${sim.barberName}: fifteen it is and the queue stays closed. Anyone who cancels gets a new day, and their slot goes to the waitlist.`;
+      write(reply);
+    } else if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
+      try { reply = await this.voiceStream(text, write); }
       catch (err) { this.goOffline(failure(err)); }
     }
-    if (!reply) {
-      const d = sim.daySummary();
-      reply = `Hey ${sim.barberName}, what's up? Today's gonna be packed: you've got ${d.clientsToday} heads booked, first one in ${d.nextChairFreeInMin} minutes, and you'll be done around ${spoken(d.finishAround)}.`;
+    if (!reply) { reply = this.voiceRules(text); write(reply); }
+    sim.say("agent", reply);
+    console.log(`[voice] turn ${Date.now() - t0} ms total`);
+    return reply;
+  }
+
+  // Haiku with the state in the prompt (usually no tool round-trip), streamed.
+  private async voiceStream(text: string, write: (delta: string) => void) {
+    const sim = this.sim;
+    const state = { ...sim.daySummary(), ifTwoMore: sim.capacity(2), recentNews: sim.events.filter((e) => e.notable).slice(-3).map((e) => `${clock(e.t)} ${e.text}`) };
+    const messages: Anthropic.MessageParam[] = [];
+    for (const v of sim.voice.slice(-5, -1)) {
+      const role = v.who === "barber" ? "user" : "assistant";
+      const last = messages[messages.length - 1];
+      if (last && last.role === role) last.content += "\n" + v.text; else messages.push({ role, content: v.text });
     }
-    sim.say("agent", reply, true);
+    while (messages.length && messages[0].role !== "user") messages.shift();
+    const turn = `[state] ${JSON.stringify(state)}\n${sim.barberName}: ${text}`;
+    const last = messages[messages.length - 1];
+    if (last && last.role === "user") last.content += "\n" + turn; else messages.push({ role: "user", content: turn });
+    let said = "";
+    for (let i = 0; i < 2; i++) {
+      this.calls++;
+      const params: any = { model: VOICE_MODEL, max_tokens: 150, system: VOICE_SYSTEM, tools: VOICE_TOOLS, messages, output_config: { effort: "low" } };
+      if (this.fastVoice) params.thinking = { type: "disabled" };
+      const t0 = Date.now();
+      let first = 0;
+      const run = async () => {
+        const stream = this.client!.messages.stream(params);
+        stream.on("text", (d: string) => { if (!first) first = Date.now() - t0; said += d; write(d); });
+        return stream.finalMessage();
+      };
+      let res;
+      try { res = await run(); }
+      catch (err) {
+        if (!(err instanceof Anthropic.BadRequestError) || !this.fastVoice || said) throw err;
+        this.fastVoice = false; delete params.thinking; // the API refused the fast setting: keep Claude, drop it
+        res = await run();
+      }
+      this.inTok += res.usage.input_tokens; this.outTok += res.usage.output_tokens;
+      console.log(`[claude] voice ${Date.now() - t0} ms (first text ${first || "-"} ms), ${res.usage.input_tokens} in / ${res.usage.output_tokens} out, stop=${res.stop_reason}`);
+      const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+      if (!uses.length || res.stop_reason !== "tool_use") break;
+      messages.push({ role: "assistant", content: res.content }, {
+        role: "user",
+        content: uses.map((u) => ({ type: "tool_result" as const, tool_use_id: u.id, content: this.execVoice(u.name, u.input) })),
+      });
+    }
+    return said.trim();
   }
 
   private async voiceClaude(seed?: Anthropic.MessageParam[]) {

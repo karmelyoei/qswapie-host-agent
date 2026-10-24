@@ -10,6 +10,7 @@ import { WebSocketServer, WebSocket } from "ws";
 try { process.loadEnvFile(".env"); } catch { /* no .env: fine */ }
 
 const PORT = Number(process.env.PORT ?? 5173);
+const WAKE_WORDS = (process.env.WAKE_WORDS || "hey hazel,hazel,hey hasel,hey hazle,hey q,hey queue,hey cue,hey kyu").split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);
 const PUBLIC = path.join(import.meta.dirname, "..", "public");
 
 let sim = new Sim();
@@ -35,6 +36,7 @@ function state() {
     closeAt: clock(sim.closeAt),
     voice: sim.voice.map((v) => ({ ...v, t: clock(v.t) })),
     reson8: Boolean(process.env.RESON8_API_KEY),
+    wakeWords: WAKE_WORDS,
     stats: sim.stats(),
     agent: agent.status(),
     line: sim.line,
@@ -69,6 +71,7 @@ async function action(body: any) {
     }
     case "reset": sim = new Sim(body.scenario === "barber" ? "barber" : "demo"); agent = new Agent(sim); break;
     case "startday": await agent.greet(); break;
+    case "hold": sim.voiceHoldUntil = body.on ? Date.now() + Math.min(30000, Number(body.ms) || 15000) : 0; break; // clock pauses while the barber talks to Hazel
     case "closetime": { const m = /^(\d{1,2}):(\d{2})$/.exec(String(body.value)); if (m) sim.closeAt = Number(m[1]) * 60 + Number(m[2]); break; }
     case "voice": { const text = String(body.text ?? "").trim().slice(0, 500); if (text) await agent.voice(text); break; }
   }
@@ -79,6 +82,15 @@ const server = http.createServer(async (req, res) => {
     if (req.url === "/api/state") {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify(state()));
+    }
+    if (req.url === "/api/voice-stream" && req.method === "POST") {
+      // Streams Hazel's reply as plain text so the browser can speak the first sentence early.
+      let raw = "";
+      for await (const c of req) raw += c;
+      const text = String(JSON.parse(raw || "{}").text ?? "").trim().slice(0, 500);
+      res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" });
+      if (text) await agent.voiceTurn(text, (d) => res.write(d));
+      return res.end();
     }
     if (req.url === "/api/action" && req.method === "POST") {
       let raw = "";

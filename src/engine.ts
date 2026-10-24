@@ -2,7 +2,7 @@
 
 export type Status = "waiting" | "called" | "serving" | "done" | "noshow" | "left";
 
-export interface Msg { t: number; text: string; kind: string; from: "agent" | "system" }
+export interface Msg { t: number; text: string; kind: string; from: "agent" | "system" | "guest" }
 
 export interface Guest {
   id: string;
@@ -15,6 +15,7 @@ export interface Guest {
   walk: number; // minutes to walk back
   willNoShow: boolean; // hidden from the agent
   service: number; // hidden from the agent
+  expected?: number; // booked cut length, known to everyone (morning scenario)
   headedBackAt?: number;
   calledAt?: number;
   arriveAt?: number;
@@ -32,6 +33,9 @@ export interface OwnerAlert { id: number; t: number; text: string; reason: strin
 
 export interface Swap { id: number; a: string; b: string; t: number; status: "proposed" | "accepted" | "declined" }
 
+// Morning shift: 15 booked clients in this order, then the waitlist (Max, Zoe).
+const MORNING_NAMES = ["Paul", "Mo", "Sara", "Jonas", "Emma", "Lina", "Theo", "Nora", "Ben", "Ada", "Omar", "Ida", "Karl", "Rosa", "Finn", "Max", "Zoe"];
+const MORNING_CUTS = [30, 35, 30, 30, 45, 30, 30, 30, 35, 30, 30, 30, 30, 35, 30]; // 480 min: done about 17:00
 const BARBER_NAMES = ["Paul", "Mo", "Ben", "Lina", "Ada", "Sara", "Jonas", "Emma", "Theo", "Nora", "Max", "Ida", "Karl", "Rosa", "Finn", "Lea", "Oskar", "Hanna", "Emil", "Zoe"];
 const NAMES = ["Mia", "Leo", "Noah", "Emma", "Ben", "Lina", "Paul", "Ella", "Finn", "Lea", "Jonas", "Mila", "Elias", "Clara", "Anton", "Ida", "Theo", "Nora", "Max", "Ava", "Luca", "Zoe", "Emil", "Lotta", "Karl", "Rosa", "Milan", "Frida", "Oskar", "Hanna"];
 export const MEAN_SERVICE = 12;
@@ -90,15 +94,12 @@ export class Sim {
     const close = /^(\d{1,2}):(\d{2})$/.exec(process.env.CLOSE_TIME ?? "");
     if (close) this.closeAt = Number(close[1]) * 60 + Number(close[2]);
     if (scenario === "barber") {
-      // One barber, 9 clients already booked in line, closed for new walk-ins.
-      // The clock waits until the barber taps "Start day"; opening the queue by voice lets walk-ins in.
-      this.names = BARBER_NAMES;
-      this.t = 15 * 60 + 30; this.staff = 1; this.joinsPaused = true; this.voiceMode = true; this.running = false;
-      const g = this.makeGuest({ away: false, service: 14 });
-      g.joinedAt = this.t - 20; g.status = "serving"; g.startAt = this.t - 9; g.endAt = g.startAt + g.service;
-      this.guests.push(g);
-      const booked: Partial<Guest>[] = [{}, { swapOk: true }, {}, { away: false }, {}, {}, {}, {}, {}]; // Mo, Ben (happy to swap), Lina, Ada, ...
-      booked.forEach((o, i) => this.join({ swapOk: false, willNoShow: false, ...o }, this.t - 18 + i * 2, true));
+      // Morning shift: 09:00, one barber, 15 booked clients, closed to walk-ins.
+      // The clock waits for the barber's go-ahead by voice; the day's events are scripted so every run is the same.
+      this.names = MORNING_NAMES;
+      this.t = 9 * 60; this.staff = 1; this.joinsPaused = true; this.voiceMode = true; this.running = false;
+      if (!close) this.closeAt = 17 * 60 + 30;
+      MORNING_CUTS.forEach((cut, i) => this.join({ away: false, swapOk: i === 8, willNoShow: false, service: cut, expected: cut }, this.t - 30, true));
       this.signals = [];
       this.recompute();
       return;
@@ -146,8 +147,10 @@ export class Sim {
     return g;
   }
 
-  event(text: string, notable = true) {
+  event(text: string, notable = true, spoken?: string) {
     this.events.push({ t: this.t, text, notable });
+    // Morning shift: Hazel tells the barber right away, in one short line.
+    if (spoken && this.voiceMode) { this.say("agent", spoken, true); this.spokenCursor = this.events.length; }
   }
 
   say(who: "barber" | "agent", text: string, proactive = false) {
@@ -178,14 +181,62 @@ export class Sim {
 
   private at(dt: number, run: () => void) { this.scheduled.push({ at: this.t + dt, run }); }
 
-  // Barber taps "Start day": the clock runs, and the scripted afternoon begins (Ada in a hurry, Lina cancels).
+  // Barber woke the voice agent: the greeting happened, the clock still waits for the go-ahead.
   startDay() {
     if (this.dayStarted) return;
-    this.dayStarted = true; this.running = true;
+    this.dayStarted = true;
+    if (this.scenario !== "barber") this.running = true;
+  }
+
+  // Barber gave the go-ahead: the clock runs and the scripted morning begins.
+  go(openForMore: boolean) {
+    if (this.running) return;
+    this.dayStarted = true; this.running = true; this.speed = 1;
     if (this.scenario !== "barber") return;
+    if (openForMore) { this.setJoins(true, this.barberName); [20, 40].forEach((m) => this.at(m, () => this.join({ away: false, swapOk: false, willNoShow: false, service: 30, expected: 30 }))); this.at(45, () => this.setJoins(false, "Hazel")); }
     const find = (n: string) => this.guests.find((g) => g.name === n);
-    this.at(4, () => { const g = find("Ada"); if (g) this.setHurry(g.id); });
-    this.at(7, () => { const g = find("Lina"); if (g) this.cancel(g.id); });
+    const start = this.t;
+    const atClock = (hhmm: number, run: () => void) => this.at(hhmm - start, run);
+    atClock(10 * 60 + 30, () => this.cancelFlow(find("Lina"), "cancelled", "Work came up, sorry!", "work came up", "tomorrow 10:00", "Max"));
+    atClock(11 * 60 + 5, () => { const g = find("Ada"); if (g) this.setHurry(g.id); });
+    atClock(12 * 60, () => this.cancelFlow(find("Omar"), "withdrew", "My kid got sick, sorry.", "kid got sick", "Thursday 14:00", "Zoe"));
+  }
+
+  agentMode: "AI" | "offline" = "offline"; // set by the agent, used to label scripted agent actions
+  voiceHoldUntil = 0; // real-time ms: the clock pauses while the barber talks to Hazel
+
+  // A booked client cancels: ask why, offer a new day, rebook, give the slot to the waitlist, tell the barber.
+  private cancelFlow(g: Guest | undefined, verb: string, reply: string, shortWhy: string, rebook: string, standinName: string) {
+    if (!g || g.status !== "waiting") return;
+    const idx = this.line.indexOf(g.id);
+    const slot = g.wait ? clock(this.t + g.wait[0]) : "";
+    g.messages.push({ t: this.t, text: "I can't make it today, sorry.", kind: "guest", from: "guest" });
+    g.status = "left"; g.endAt = this.t;
+    this.recompute();
+    const m = this.agentMode;
+    const ask = `Sorry you can't make it, ${g.name}. Mind telling us why? Want to rebook for another day?`;
+    g.messages.push({ t: this.t, text: ask, kind: "update", from: "agent" });
+    this.log(m, "message_guest", `To ${g.name}: "${ask}"`, `${g.name} ${verb}: ask why and offer a new day`);
+    this.at(1, () => {
+      g.messages.push({ t: this.t, text: reply, kind: "guest", from: "guest" });
+      const offer = `No worries, hope all is well! Does ${rebook} work for you?`;
+      g.messages.push({ t: this.t, text: offer, kind: "update", from: "agent" });
+      this.log(m, "message_guest", `To ${g.name}: "${offer}"`, `reason: ${shortWhy}; offer the next free slot`);
+    });
+    this.at(2, () => {
+      g.messages.push({ t: this.t, text: "Yes, perfect.", kind: "guest", from: "guest" });
+      const ok = `Booked: ${rebook}. See you then, ${g.name}!`;
+      g.messages.push({ t: this.t, text: ok, kind: "update", from: "agent" });
+      this.log(m, "rebook", `${g.name} rebooked for ${rebook}`, "guest said yes");
+      const s2 = this.join({ name: standinName, away: true, walk: 8, swapOk: false, willNoShow: false, service: 30, expected: 30 }, this.t, true);
+      this.line.splice(this.line.indexOf(s2.id), 1);
+      this.line.splice(Math.max(0, Math.min(idx, this.line.length)), 0, s2.id);
+      this.recompute();
+      s2.messages.push({ t: this.t, text: `Good news ${standinName}: a slot opened${slot ? " around " + slot : ""} at Kiez Cuts. It's yours, see you soon!`, kind: "update", from: "agent" });
+      this.log(m, "offer_slot", `Gave ${g.name}'s slot to ${standinName} from the waitlist`, "free slot, waitlist first");
+      this.event(`${g.name} ${verb} (${shortWhy}), rebooked for ${rebook}; ${standinName} took the slot`, true,
+        `Heads up ${this.barberName}: ${g.name} ${verb}, ${shortWhy}, rebooked for ${rebook}, and ${standinName} took the slot.`);
+    });
   }
 
   // Minutes of work left for all chairs, and when the last client will be done.
@@ -193,9 +244,10 @@ export class Sim {
     let work = 0;
     for (const g of this.guests) {
       if (g.status === "serving") work += Math.max(0, (g.endAt ?? 0) - this.t);
-      if (g.status === "called") work += Math.max(0, (g.arriveAt ?? this.t) - this.t) + MEAN_SERVICE;
+      if (g.status === "called") work += Math.max(0, (g.arriveAt ?? this.t) - this.t) + (g.expected ?? MEAN_SERVICE);
     }
-    work += (this.line.length + extra) * MEAN_SERVICE;
+    for (const id of this.line) work += this.get(id)?.expected ?? MEAN_SERVICE;
+    work += extra * MEAN_SERVICE;
     return Math.round(this.t + work / Math.max(1, this.staff));
   }
 
@@ -207,10 +259,15 @@ export class Sim {
       inChair: this.guests.filter((g) => g.status === "serving").map((g) => g.name),
       waiting: this.line.length, cancelled: this.guests.filter((g) => g.status === "left").length,
       noShows: this.guests.filter((g) => g.status === "noshow").length,
-      avgCutMin: MEAN_SERVICE, finishAround: clock(this.finishAt()), barberName: this.barberName,
+      cutMinutes: this.cutRange(), finishAround: clock(this.finishAt()), barberName: this.barberName,
       nextClient: this.get(this.line[0] ?? "")?.name ?? null,
       nextChairFreeInMin: this.nextChairFree(),
     };
+  }
+
+  private cutRange() {
+    const cuts = this.guests.filter((g) => g.status === "waiting" || g.status === "called" || g.status === "serving").map((g) => g.expected ?? MEAN_SERVICE);
+    return cuts.length ? [Math.min(...cuts), Math.max(...cuts)] : [MEAN_SERVICE, MEAN_SERVICE];
   }
 
   private nextChairFree() {
@@ -343,7 +400,7 @@ export class Sim {
   // ---- simulation ----
 
   step(dt: number) {
-    if (!this.running || this.dayClosed) return;
+    if (!this.running || this.dayClosed || Date.now() < this.voiceHoldUntil) return;
     this.t += dt;
     const r = this.rand;
 
@@ -383,7 +440,8 @@ export class Sim {
           this.sys(ga, `${gb.name} agreed. You moved up to place ${ib + 1}.`);
           this.sys(gb, `Thanks! You are now place ${ia + 1}. We'll message you before your turn.`);
           this.log("sim", "swap", `${gb.name} accepted the swap with ${ga.name}`, "guest tapped accept");
-          this.event(`${gb.name} swapped with ${ga.name}${ga.hurry ? `, ${ga.name} was in a hurry` : ""}`);
+          this.event(`${gb.name} swapped with ${ga.name}${ga.hurry ? `, ${ga.name} was in a hurry` : ""}`, true,
+            this.scenario === "barber" ? `Heads up ${this.barberName}: ${ga.name} was in a hurry, so ${gb.name} let ${ga.name} go first.` : undefined);
           this.signal(`${gb.name} accepted the swap; ${ga.name} is now place ${ib + 1}`);
         } else {
           s.status = "declined";
@@ -414,7 +472,7 @@ export class Sim {
     const chairs: number[] = [];
     for (const g of this.guests) {
       if (g.status === "serving") chairs.push(Math.max(0, (g.endAt ?? 0) - this.t));
-      if (g.status === "called") chairs.push(Math.max(0, (g.arriveAt ?? this.t + g.walk) - this.t) + MEAN_SERVICE);
+      if (g.status === "called") chairs.push(Math.max(0, (g.arriveAt ?? this.t + g.walk) - this.t) + (g.expected ?? MEAN_SERVICE));
     }
     while (chairs.length < this.staff) chairs.push(0);
     chairs.sort((a, b) => a - b);
@@ -425,7 +483,7 @@ export class Sim {
       const ch = used[0];
       const k = ch.k + 1;
       g.wait = [Math.max(0, Math.round(ch.c - 1.5 * k)), Math.round(ch.c + 2 + 2.5 * k)];
-      ch.c += MEAN_SERVICE; ch.k = k;
+      ch.c += g.expected ?? MEAN_SERVICE; ch.k = k;
     }
   }
 
