@@ -1,0 +1,46 @@
+/* Hazel the squirrel: an original SVG on the orb, animated by the voice state on #voiceCore. Warm orange/cream palette. */
+:root { --nut: #d9541e; --nut-hi: #ef7a3c; --cream: #f6e7cf; --cocoa: #2a160c; }
+
+/* Warm the page: orange/cream accents on dark, text contrast kept high. */
+body.voice-page { background: radial-gradient(1200px 700px at 50% 22%, #2a1a12 0%, #140d0a 55%, #0d0907 100%); }
+.voice-page .core-orb { border-color: #ffd2a8a0; background: radial-gradient(circle at 31% 25%, #ffe2c2 0, #f4a067 16%, #d9541e 42%, #8a2f10 72%, #3d1607 100%);
+  box-shadow: inset -14px -20px 42px #3a12036e, inset 6px 9px 22px #ffe9d066, 0 0 40px #ff7a3a55, 0 0 90px #d9541e3a; }
+.voice-page .core-ring { border-color: #ffb27a55; }
+.voice-page .waveform i { background: var(--cream); }
+.voice-page .panel-kicker, .voice-page .shop-panel h1 span { color: #ffb27a; }
+.voice-page .glass-panel { border-color: #ffb27a33; }
+
+/* The squirrel sits on the orb. */
+.hazel { position: absolute; z-index: 5; left: 50%; top: 26%; width: 40%; transform: translateX(-50%); pointer-events: none; filter: drop-shadow(0 10px 14px #0008); }
+.hazel svg { width: 100%; height: auto; display: block; overflow: visible; }
+.hazel .sq-all, .hazel .sq-tail, .hazel .sq-head, .hazel .sq-ear-l, .hazel .sq-ear-r, .hazel .sq-mouth { transform-box: fill-box; }
+.hazel .sq-tail { transform-origin: 15% 90%; }
+.hazel .sq-head { transform-origin: 50% 85%; }
+.hazel .sq-ear-l, .hazel .sq-ear-r { transform-origin: 50% 100%; }
+.hazel .sq-mouth { transform-origin: 50% 0%; }
+.voice-core .waveform { opacity: .55; }
+
+/* idle: gentle breathing / bob */
+.is-idle .hazel .sq-all { animation: sq-breathe 3.4s ease-in-out infinite; transform-origin: 50% 100%; transform-box: fill-box; }
+/* listening: tail swish + ears up */
+.is-listening .hazel .sq-tail { animation: sq-swish .9s ease-in-out infinite alternate; }
+.is-listening .hazel .sq-ear-l, .is-listening .hazel .sq-ear-r { transform: scaleY(1.18); transition: transform .25s; }
+/* thinking: head tilt + ear twitch */
+.is-thinking .hazel .sq-head { animation: sq-tilt 1.6s ease-in-out infinite; }
+.is-thinking .hazel .sq-ear-r { animation: sq-twitch 1.1s steps(2, end) infinite; }
+/* speaking: small hop + mouth bounce */
+.is-speaking .hazel .sq-all { animation: sq-hop .55s ease-in-out infinite; transform-origin: 50% 100%; transform-box: fill-box; }
+.is-speaking .hazel .sq-mouth { animation: sq-talk .22s ease-in-out infinite alternate; }
+
+@keyframes sq-breathe { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-3px) scale(1.015); } }
+@keyframes sq-swish { from { transform: rotate(-6deg); } to { transform: rotate(8deg); } }
+@keyframes sq-tilt { 0%,100% { transform: rotate(0); } 35%,65% { transform: rotate(-11deg); } }
+@keyframes sq-twitch { 0%,80% { transform: rotate(0); } 90% { transform: rotate(14deg); } }
+@keyframes sq-hop { 0%,100% { transform: translateY(0); } 45% { transform: translateY(-9px); } }
+@keyframes sq-talk { from { transform: scaleY(.35); } to { transform: scaleY(1.25); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .hazel *, .hazel .sq-all { animation: none !important; transition: none !important; }
+}
+.voice-page .mic-button { background: radial-gradient(circle at 35% 30%, #ffd2a8, #ef7a3c 45%, #b9431a); border-color: #ffd2a8aa; box-shadow: 0 10px 30px #d9541e66; }
+.voice-page .assistant-avatar { background: #f6e7cf; color: #2a160c; }

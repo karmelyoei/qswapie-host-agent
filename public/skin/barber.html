@@ -8,6 +8,7 @@
   <!-- Stage skin designed with Codex (barber.css, mascot.svg); warm.css adds the warm accent and app controls. -->
   <link rel="stylesheet" href="/skin/barber.css">
   <link rel="stylesheet" href="/skin/warm.css">
+  <link rel="stylesheet" href="/skin/squirrel.css">
 </head>
 <body class="voice-page">
   <div class="voice-app">
@@ -38,12 +39,44 @@
       </aside>
 
       <section class="voice-center" aria-label="Voice conversation with Hazel">
-        <div class="assistant-id"><span class="assistant-avatar">H</span><div><strong>Hazel</strong><small>Your barbershop squirrel</small></div><span class="availability"><i></i> <span id="avail">READY</span></span></div>
+        <div class="assistant-id"><span class="assistant-avatar">🐿</span><div><strong>Hazel</strong><small>Your barbershop squirrel</small></div><span class="availability"><i></i> <span id="avail">READY</span></span></div>
         <div class="core-wrap">
           <div class="voice-core is-idle" id="voiceCore" role="img" aria-label="Hazel is ready to listen">
             <div class="core-grid"></div>
             <div class="core-ring ring-one"></div><div class="core-ring ring-two"></div><div class="core-ring ring-three"></div>
             <div class="core-halo"></div><div class="core-orb"><span class="core-glint"></span></div>
+            <div class="hazel" aria-hidden="true">
+              <!-- Hazel: original squirrel drawing for this project -->
+              <svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg">
+                <g class="sq-all">
+                  <g class="sq-tail">
+                    <path d="M120 200 C 190 205, 205 140, 180 95 C 162 62, 178 30, 150 18 C 124 8, 108 34, 128 50 C 146 64, 140 92, 128 112 C 112 140, 104 178, 120 200 Z" fill="#d9541e"/>
+                    <path d="M150 26 C 134 22, 126 36, 138 46 C 156 60, 158 92, 146 116 C 136 136, 130 162, 138 186 C 170 180, 186 140, 170 104 C 156 74, 172 40, 150 26 Z" fill="#ef7a3c" opacity=".85"/>
+                    <path d="M150 30 C 142 30, 140 38, 146 44" fill="none" stroke="#f6e7cf" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+                  </g>
+                  <ellipse cx="88" cy="168" rx="46" ry="44" fill="#d9541e"/>
+                  <ellipse cx="88" cy="174" rx="28" ry="34" fill="#f6e7cf"/>
+                  <ellipse cx="62" cy="208" rx="16" ry="8" fill="#b9431a"/>
+                  <ellipse cx="114" cy="208" rx="16" ry="8" fill="#b9431a"/>
+                  <g class="sq-head">
+                    <g class="sq-ear-l"><path d="M52 62 L 46 22 L 74 50 Z" fill="#d9541e"/><path d="M47 24 L 44 8 M 47 24 L 52 10 M 47 24 L 40 14" stroke="#ef7a3c" stroke-width="3" stroke-linecap="round"/><path d="M54 56 L 51 32 L 67 49 Z" fill="#f6b48e"/></g>
+                    <g class="sq-ear-r"><path d="M124 62 L 130 22 L 102 50 Z" fill="#d9541e"/><path d="M129 24 L 132 8 M 129 24 L 124 10 M 129 24 L 136 14" stroke="#ef7a3c" stroke-width="3" stroke-linecap="round"/><path d="M122 56 L 125 32 L 109 49 Z" fill="#f6b48e"/></g>
+                    <ellipse cx="88" cy="88" rx="46" ry="40" fill="#d9541e"/>
+                    <ellipse cx="88" cy="104" rx="30" ry="22" fill="#f6e7cf"/>
+                    <circle cx="70" cy="84" r="10" fill="#2a160c"/><circle cx="106" cy="84" r="10" fill="#2a160c"/>
+                    <circle cx="73.5" cy="80" r="3.6" fill="#fff"/><circle cx="109.5" cy="80" r="3.6" fill="#fff"/>
+                    <circle cx="67" cy="88" r="1.6" fill="#fff" opacity=".8"/><circle cx="103" cy="88" r="1.6" fill="#fff" opacity=".8"/>
+                    <ellipse cx="88" cy="98" rx="5" ry="3.6" fill="#2a160c"/>
+                    <path d="M80 104 Q 88 110 96 104" fill="none" stroke="#2a160c" stroke-width="2.2" stroke-linecap="round"/>
+                    <ellipse class="sq-mouth" cx="88" cy="109" rx="4" ry="2.6" fill="#8a2f10"/>
+                    <circle cx="58" cy="100" r="5" fill="#f2896a" opacity=".55"/><circle cx="118" cy="100" r="5" fill="#f2896a" opacity=".55"/>
+                  </g>
+                  <ellipse cx="78" cy="140" rx="9" ry="11" fill="#c64a19"/>
+                  <ellipse cx="98" cy="140" rx="9" ry="11" fill="#c64a19"/>
+                  <ellipse cx="88" cy="147" rx="8" ry="9" fill="#8a4a24"/><path d="M82 142 Q 88 136 94 142" fill="none" stroke="#5c2d12" stroke-width="2"/>
+                </g>
+              </svg>
+            </div>
             <div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
           </div>
           <div class="listening-caption"><span class="caption-pip"></span><span id="micState">Ready when you are</span></div>

@@ -8,7 +8,7 @@ Built at **Agentic AI Hack by Jamie** ({Tech: Europe}, Berlin, 2026-10-24), Open
 
 | Barber voice page (`/barber`) | Queue agent page (`/`) |
 |---|---|
-| ![Hazel, the barber voice sidekick, talking with Nico](docs/img/barber-page.jpg) | ![Live queue, guest phone and agent activity feed](docs/img/queue-page.jpg) |
+| ![Hazel, the barbershop squirrel, ready for Nico](docs/img/barber-page.jpg) | ![Live queue, guest phone and agent activity feed](docs/img/queue-page.jpg) |
 
 *Screenshots in offline mode (no API keys), same live simulation on both pages. The stage look is the default; add `?skin=old` to either URL for the classic look.*
 
@@ -133,7 +133,7 @@ src/server.ts   HTTP server, /api/state, /api/action, /stt WebSocket proxy to Re
 public/index.html   queue page (/ and /guests)
 public/barber.html  barber voice page (/barber)
 public/voice.js     mic capture, Reson8 / Web Speech, speech output, voice picker
-public/skin/        stage skin: barber page with orb, agent-ui.css, mascot.svg, warm.css (default look)
+public/skin/        stage skin: barber page with orb and Hazel the squirrel (squirrel.css, original SVG), agent-ui.css, mascot.svg, warm.css (default look)
 docs/               architecture and API documentation
 pitch/              pitch and submission outlines
 ```
