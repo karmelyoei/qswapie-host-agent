@@ -101,7 +101,7 @@ The server listens on `127.0.0.1:PORT` (default 5173). Static files come from `p
 
 Returns one JSON snapshot used by both pages (polled about twice a second):
 
-- `now`, `speed`, `running`, `staff`, `joinsPaused`, `dayClosed`, `summary`, `scenario`, `voiceMode`, `closeAt`
+- `now`, `speed`, `running`, `staff`, `joinsPaused`, `dayClosed`, `summary`, `scenario`, `voiceMode`, `dayStarted`, `barberName`, `closeAt`
 - `voice`: the voice transcript lines (`id`, `t`, `who`, `text`, `proactive`)
 - `reson8`: boolean, whether a Reson8 key is configured (the key itself is never sent)
 - `stats`: served, in chair, waiting, no-shows, swaps, agent messages, average wait, idle chair minutes, backlog
@@ -125,11 +125,11 @@ JSON body `{ "type": ..., ... }`. Response is `{}`.
 | `alert` | `id`, `apply` (boolean) | Owner applies or dismisses an alert |
 | `close` | none | Closes the day and writes the end-of-day summary (Claude or stats line) |
 | `reset` | `scenario` (`"barber"` or anything else for the demo) | Creates a fresh simulation and a fresh agent (resets counters) |
-| `voicemode` | none | Toggles the barber voice panel on the guests page |
+| `startday` | none | Starts the clock on the barber day and makes Fade greet the barber proactively |
 | `closetime` | `value` as `HH:MM` | Sets the shop's closing time |
 | `voice` | `text` (trimmed, at most 500 characters) | Runs the voice agent on the barber's text and appends both lines to the transcript |
 
-The `/barber` page adds its own controls (Start day, mute, closing time, voice picker). They map onto these actions and the same shared simulation.
+The `/barber` page controls map onto these actions (Start day is `startday`); mute and the voice picker are browser-only. Static files: `/` and `/guests` serve `index.html`, `/barber` serves `barber.html`, plus `voice.js`.
 
 ### WebSocket /stt
 

@@ -64,7 +64,7 @@ flowchart LR
 - Wait prediction: guests are assigned to the next free chair (serving guests count their remaining time, called guests count walk plus a mean cut). The range is `[chair_time - 1.5k, chair_time + 2 + 2.5k]` minutes, where `k` is how many guests that chair already has queued. The range widens the further back a guest is. It is never a single number.
 - Engine guards: no duplicate `kind` messages per guest (except `update`), no-show only after 3 minutes, no duplicate open owner alerts (15 minute window), and a failsafe that removes a called guest after 12 minutes if nobody acted.
 - Swaps: a proposal resolves after 1.5 sim minutes. It is accepted if the partner has `swapOk`, otherwise declined.
-- Barber scenario: one barber, queue closed at 15:30, closing time from `CLOSE_TIME` (default 19:00). Opening the queue starts a scripted afternoon (9 walk-ins, Ada in a hurry, Lina cancels, 6 more later). In this scenario the owner-style backlog alerts are suppressed, because the barber opens and closes the queue by voice.
+- Barber scenario: 15:30, one barber, one client in the chair and 9 booked in line, closed for new walk-ins, closing time from `CLOSE_TIME` (default 19:00). The clock is paused until the barber taps Start day; then Ada taps "in a hurry" (Ben, who said he is happy to swap, swaps with her) and Lina cancels. Opening the queue by voice lets 6 walk-ins join over the next minutes. In this scenario the owner-style backlog alerts are suppressed, because the barber opens and closes the queue by voice.
 
 ## Signals and the watchdog
 
