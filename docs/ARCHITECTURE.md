@@ -9,13 +9,13 @@ All guests are simulated with fake names. Nothing calls a QSwapie system. The on
 | Part | File | Role |
 |---|---|---|
 | Simulation engine | `src/engine.ts` | Seeded queue simulation, wait prediction, guest actions, event log, signals for the agent |
-| Agent | `src/agent.ts` | Claude tool-use loop, offline rule fallback, voice agent "Fade", budget and failure handling |
+| Agent | `src/agent.ts` | Claude tool-use loop, offline rule fallback, voice agent "Hazel", budget and failure handling |
 | Server | `src/server.ts` | HTTP (`/api/state`, `/api/action`, static files), WebSocket proxy `/stt`, timers |
 | Pages | `public/` | `/` (and `/guests`): queue, guest phone, owner view, agent activity feed. `/barber`: full-screen barber voice page |
 
 The two pages share one server and one simulation. Both poll `GET /api/state` about twice a second (the current code polls every 600 ms) and send every action with `POST /api/action`.
 
-The barber is named by `BARBER_NAME` (default "Nico"). The voice agent is called "Fade". When the barber taps "Start day" on `/barber`, Fade greets him proactively with numbers it fetched from tools, and keeps reporting events between cuts.
+The barber is named by `BARBER_NAME` (default "Nico"). The voice agent is called "Hazel". When the barber taps "Start day" on `/barber`, Hazel greets him proactively with numbers it fetched from tools, and keeps reporting events between cuts.
 
 ## System diagram
 
@@ -112,7 +112,7 @@ sequenceDiagram
   participant Page as Browser page
   participant Srv as Node server (/stt)
   participant R8 as Reson8 Turns WS
-  participant Ag as Agent (Fade)
+  participant Ag as Agent (Hazel)
   participant Cl as Claude
   participant Sim as Sim engine
   participant TTS as speechSynthesis
@@ -124,7 +124,7 @@ sequenceDiagram
   R8-->>Srv: turn_start, turn_end_candidate (text), turn_end
   Srv-->>Page: JSON events forwarded as text
   Page->>Page: show candidate text as interim transcript
-  Note over Page: on turn_end, send last candidate text (ignored while Fade is speaking)
+  Note over Page: on turn_end, send last candidate text (ignored while Hazel is speaking)
   Page->>Srv: POST /api/action {type:"voice", text}
   Srv->>Ag: agent.voice(text)
   Ag->>Cl: messages.create (voice system prompt, voice tools, last 4 transcript lines)
@@ -144,7 +144,7 @@ sequenceDiagram
 
 Details that matter:
 
-- The browser creates an `AudioContext` at 16 kHz and converts float samples to signed 16 bit PCM. While Fade speaks, the page sends silence instead of mic samples, so Fade never hears itself.
+- The browser creates an `AudioContext` at 16 kHz and converts float samples to signed 16 bit PCM. While Hazel speaks, the page sends silence instead of mic samples, so Hazel never hears itself.
 - The server opens one Reson8 socket per browser socket. Binary frames from the browser are queued until the upstream socket is open. Text frames (for example a flush request) are passed through. Only text events from Reson8 are forwarded to the browser.
 - `turn_end_candidate` updates the interim line. `turn_end` triggers the request, using the last candidate text.
 - The browser POSTs the final text. The server returns after Claude (or the offline rules) has produced the reply. The reply appears in `/api/state` as a voice line, and the page speaks any new agent line it has not yet spoken. That path also carries proactive lines, so one mechanism handles both.
@@ -153,10 +153,10 @@ Details that matter:
 
 ### Proactive voice triggers
 
-Fade speaks without being asked in these cases:
+Hazel speaks without being asked in these cases:
 
-- Start day: the barber taps "Start day", Fade greets him with numbers from tools (`day_summary`, `estimate_finish`).
-- Between cuts: when a cut finishes, the engine collects notable events since Fade last spoke (cancellations, swaps, no-shows) and adds a short line plus who is next. Routine joins are skipped. If the barber just asked "anything new", those events are marked as heard and not repeated.
+- Start day: the barber taps "Start day", Hazel greets him with numbers from tools (`day_summary`, `estimate_finish`).
+- Between cuts: when a cut finishes, the engine collects notable events since Hazel last spoke (cancellations, swaps, no-shows) and adds a short line plus who is next. Routine joins are skipped. If the barber just asked "anything new", those events are marked as heard and not repeated.
 - Guest-side events that matter to the barber come from the same signals the guest agent uses: joins, hurry taps, late called guests, guests near the front compared with their walk time, backlog, and no-shows. The watchdog cooldowns above keep this from repeating.
 
 ## Fallback chain
@@ -213,7 +213,11 @@ Every request logs one line with its kind, duration, token counts, and stop reas
 |---|---|---|
 | `ANTHROPIC_API_KEY` | none | Enables Claude. Without it the agent runs offline rules |
 | `RESON8_API_KEY` | none | Enables Reson8 speech-to-text. Without it the browser recogniser is used |
-| `BARBER_NAME` | `Nico` | Name of the barber in the voice page and Fade's greeting |
+| `BARBER_NAME` | `Nico` | Name of the barber in the voice page and Hazel's greeting |
 | `CLOSE_TIME` | `19:00` | Closing time, `HH:MM`. Also editable on the voice page |
 | `PORT` | `5173` | HTTP port |
 | `AGENT_MAX_CALLS` | `150` | Claude request cap per server run |
+
+## Update: the morning shift scenario (latest)
+
+`Restart day` creates a deterministic morning: 09:00, one barber, 15 booked clients with fixed cut lengths (30 to 45 min, 480 min in total, so done around 17:00), closed to walk-ins. The clock stays paused until the barber's go-ahead by voice, and pauses again while the barber and Hazel talk. Scripted events at fixed sim times: 10:30 Lina cancels, 11:05 Ada taps "in a hurry" (the guest agent swaps her with Ben), 12:00 Omar withdraws. Each cancellation runs the same flow: the agent asks why, the guest answers, the agent offers a new day and rebooks, the slot goes to the next waitlist guest (Max, then Zoe), and Hazel tells the barber in one spoken line.

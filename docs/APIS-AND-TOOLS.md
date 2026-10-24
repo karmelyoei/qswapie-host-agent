@@ -35,9 +35,9 @@ System prompt: the proactive host of the shop. It acts on its own, "doing nothin
 | `mark_no_show` | `guest_id`, `reason` (required) | Releases a called guest who did not arrive. The engine requires at least 3 minutes since the call. The next guest is called. |
 | `alert_owner` | `text`, `suggested_action` (`pause_joins`, `resume_joins`, `add_staff`, `none`), `reason` (all required) | Shows an alert on the owner view with one action button. The engine drops duplicates (15 minute window). In barber voice mode, join-related actions are refused because the barber controls the queue by voice. |
 
-### Voice tools (Fade)
+### Voice tools (Hazel)
 
-System prompt: Fade, a cheeky and warm sidekick. One or two short spoken sentences (about 25 words), no lists, no markdown, times spoken the way people say them. Every number must come from a tool.
+System prompt: Hazel, a cheeky and warm sidekick. One or two short spoken sentences (about 25 words), no lists, no markdown, times spoken the way people say them. Every number must come from a tool.
 
 | Tool | Input | What it does |
 |---|---|---|
@@ -77,8 +77,8 @@ The page also falls back if the proxy socket does not open within 4 seconds or t
 
 ## Web Speech API (browser)
 
-- `SpeechRecognition` (or `webkitSpeechRecognition`) is the fallback speech-to-text: `lang = en-US`, `continuous = true`, `interimResults = true`. Final results are sent to the agent, interim results show as the live line. It restarts on `onend` while listening and is aborted while Fade speaks. Errors `not-allowed`, `service-not-allowed`, and `audio-capture` switch the page to typed input.
-- `speechSynthesis` speaks Fade's replies. English voices are scored, and voices with "Natural" in the name (the neural voices in Microsoft Edge on Windows) rank first, then Google US and UK English voices and a short list of known good names. The choice can be changed in a dropdown and is remembered in `localStorage`. Text is split into sentences and each sentence is spoken as its own utterance. The microphone is paused while speaking, with a timer guard in case a browser never fires `onend`.
+- `SpeechRecognition` (or `webkitSpeechRecognition`) is the fallback speech-to-text: `lang = en-US`, `continuous = true`, `interimResults = true`. Final results are sent to the agent, interim results show as the live line. It restarts on `onend` while listening and is aborted while Hazel speaks. Errors `not-allowed`, `service-not-allowed`, and `audio-capture` switch the page to typed input.
+- `speechSynthesis` speaks Hazel's replies. English voices are scored, and voices with "Natural" in the name (the neural voices in Microsoft Edge on Windows) rank first, then Google US and UK English voices and a short list of known good names. The choice can be changed in a dropdown and is remembered in `localStorage`. Text is split into sentences and each sentence is spoken as its own utterance. The microphone is paused while speaking, with a timer guard in case a browser never fires `onend`.
 
 ## Node 24 built-ins
 
@@ -125,7 +125,7 @@ JSON body `{ "type": ..., ... }`. Response is `{}`.
 | `alert` | `id`, `apply` (boolean) | Owner applies or dismisses an alert |
 | `close` | none | Closes the day and writes the end-of-day summary (Claude or stats line) |
 | `reset` | `scenario` (`"barber"` or anything else for the demo) | Creates a fresh simulation and a fresh agent (resets counters) |
-| `startday` | none | Starts the clock on the barber day and makes Fade greet the barber proactively |
+| `startday` | none | Starts the clock on the barber day and makes Hazel greet the barber proactively |
 | `closetime` | `value` as `HH:MM` | Sets the shop's closing time |
 | `voice` | `text` (trimmed, at most 500 characters) | Runs the voice agent on the barber's text and appends both lines to the transcript |
 
@@ -134,3 +134,11 @@ The `/barber` page controls map onto these actions (Start day is `startday`); mu
 ### WebSocket /stt
 
 Browser to server: binary frames of 16 kHz mono PCM s16le (and optional text control frames). Server to browser: Reson8 text events as JSON. Closed with 4001 or 4002 as described above. See [ARCHITECTURE.md](ARCHITECTURE.md) for the sequence diagram.
+
+## Update: morning shift and voice speed (latest)
+
+- Voice replies use `claude-haiku-5-5` with `thinking: {type: "disabled"}` (dropped automatically if the API refuses it), `output_config.effort: "low"`, `max_tokens: 150`, streamed with `client.messages.stream()`. A compact `[state]` block (day summary, a two-extra capacity check, the last 3 notable events) goes into the prompt, so most turns need no tool call. The queue agent stays on `claude-sonnet-5-5`.
+- `POST /api/voice-stream` `{text}`: streams Hazel's reply as `text/plain`; the browser speaks each sentence as soon as it is complete and shows the time to the first spoken word.
+- `POST /api/action` `{type: "hold", on, ms}`: pauses the simulation clock while the barber talks with Hazel (max 30 s per refresh).
+- Wake words: `WAKE_WORDS` env (comma-separated), exposed in `/api/state` as `wakeWords`; detection runs on the final transcript from Reson8 or the Web Speech API.
+- The greeting and the go-ahead confirmation are templates filled from the simulation (instant, deterministic); every other voice turn goes to Haiku.
