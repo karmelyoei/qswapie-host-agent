@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT ?? 5173);
 // Hazel's voice: OpenAI text-to-speech (server-side key), browser speechSynthesis as the fallback.
 const TTS_MODEL = process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
 const TTS_VOICE = process.env.OPENAI_TTS_VOICE || "coral";
-const TTS_CAP = Number(process.env.TTS_MAX_CHARS ?? 20000); // cost guard: characters per server run
+const TTS_CAP = Number(process.env.TTS_MAX_CHARS ?? 100000); // cost guard: characters per server run
 const TTS_STYLE = "A warm, cheeky, upbeat barbershop sidekick. Natural and conversational, light Berlin cafe vibe, smile in the voice, quick pace.";
 let ttsChars = 0;
 const WAKE_WORDS = (process.env.WAKE_WORDS || "hey hazel,hazel,hey hasel,hey hazle,hey q,hey queue,hey cue,hey kyu").split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);

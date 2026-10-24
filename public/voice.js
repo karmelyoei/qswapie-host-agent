@@ -414,7 +414,8 @@ function claimHazel() {
   silencedByOtherTab = false; lastSpoken = null; // the next state sets the baseline, so past lines are not replayed
   const b = document.getElementById("otherTabBanner"); if (b) b.remove();
   try { hazelChannel && hazelChannel.postMessage({ type: "claim", tabId }); } catch {}
-  act({ type: "claim", tab: tabId }); // server side: other browsers' tabs stop receiving Hazel's lines
+  claimedAt = Date.now(); elsewhereCount = 0;
+  return act({ type: "claim", tab: tabId }); // server side: other browsers' tabs stop receiving Hazel's lines
 }
 if (hazelChannel) hazelChannel.onmessage = (e) => {
   if (!e.data || e.data.type !== "claim" || e.data.tabId === tabId) return;
@@ -430,17 +431,15 @@ if (hazelChannel) hazelChannel.onmessage = (e) => {
   }
 };
 
-// Hard guard: with an OpenAI voice on the server, the browser voice can never speak, and stray speech is cancelled.
-let speakPatched = false;
+// One-voice guard (fail-safe): never block the browser voice outright, because it is the fallback when OpenAI
+// fails; instead cancel stray browser speech while OpenAI audio plays.
+let claimedAt = 0, elsewhereCount = 0;
 setInterval(() => {
   if (!S) return;
-  if (S.tts && S.tts.openai && !speakPatched && window.speechSynthesis) {
-    speakPatched = true;
-    try { speechSynthesis.cancel(); speechSynthesis.speak = () => { audioLog("[speak] browser voice blocked (OpenAI is the voice)"); }; } catch {}
-  }
-  if (speakPatched && (audioPlaying || speaking)) { try { speechSynthesis.cancel(); } catch {} }
-  // Another tab (maybe another browser) owns Hazel now: go silent here and stop listening.
-  if (S.voiceOwnerElsewhere && !silencedByOtherTab && document.getElementById("startOverlay")?.classList.contains("gone")) {
+  if (S.tts && S.tts.openai && currentSrc) { try { speechSynthesis.cancel(); } catch {} }
+  // Another tab (maybe another browser) owns Hazel: only believe it after 3 polls in a row and never right after our own tap.
+  elsewhereCount = S.voiceOwnerElsewhere ? elsewhereCount + 1 : 0;
+  if (elsewhereCount >= 3 && Date.now() - claimedAt > 5000 && !silencedByOtherTab && document.getElementById("startOverlay")?.classList.contains("gone")) {
     hazelChannel && hazelChannel.onmessage && hazelChannel.onmessage({ data: { type: "claim", tabId: "server" } });
   }
-}, 500);
+}, 600);
