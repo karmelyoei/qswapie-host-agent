@@ -10,6 +10,12 @@ import { WebSocketServer, WebSocket } from "ws";
 try { process.loadEnvFile(".env"); } catch { /* no .env: fine */ }
 
 const PORT = Number(process.env.PORT ?? 5173);
+// Hazel's voice: OpenAI text-to-speech (server-side key), browser speechSynthesis as the fallback.
+const TTS_MODEL = process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
+const TTS_VOICE = process.env.OPENAI_TTS_VOICE || "coral";
+const TTS_CAP = Number(process.env.TTS_MAX_CHARS ?? 20000); // cost guard: characters per server run
+const TTS_STYLE = "A warm, cheeky, upbeat barbershop sidekick. Natural and conversational, light Berlin cafe vibe, smile in the voice, quick pace.";
+let ttsChars = 0;
 const WAKE_WORDS = (process.env.WAKE_WORDS || "hey hazel,hazel,hey hasel,hey hazle,hey q,hey queue,hey cue,hey kyu").split(",").map((w) => w.trim().toLowerCase()).filter(Boolean);
 const PUBLIC = path.join(import.meta.dirname, "..", "public");
 
@@ -36,6 +42,7 @@ function state() {
     closeAt: clock(sim.closeAt),
     voice: sim.voice.map((v) => ({ ...v, t: clock(v.t) })),
     reson8: Boolean(process.env.RESON8_API_KEY),
+    tts: { openai: Boolean(process.env.OPENAI_API_KEY) && ttsChars < TTS_CAP, voice: TTS_VOICE, chars: ttsChars, cap: TTS_CAP },
     wakeWords: WAKE_WORDS,
     stats: sim.stats(),
     agent: agent.status(),
@@ -82,6 +89,39 @@ const server = http.createServer(async (req, res) => {
     if (req.url === "/api/state") {
       res.writeHead(200, { "content-type": "application/json" });
       return res.end(JSON.stringify(state()));
+    }
+    if (req.url === "/api/tts" && req.method === "POST") {
+      // One sentence in, mp3 out (streamed through). Any problem: 503, and the browser speaks it itself.
+      let raw = "";
+      for await (const c of req) raw += c;
+      const text = String(JSON.parse(raw || "{}").text ?? "").trim().slice(0, 600);
+      const key = process.env.OPENAI_API_KEY;
+      if (!key || !text || ttsChars + text.length > TTS_CAP) { res.writeHead(503); return res.end(); }
+      const t0 = Date.now();
+      try {
+        const r = await fetch(`${process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/audio/speech`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: TTS_MODEL, voice: TTS_VOICE, input: text, instructions: TTS_STYLE, response_format: "mp3" }),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!r.ok || !r.body) { console.log(`[tts] OpenAI HTTP ${r.status}`); res.writeHead(503); return res.end(); }
+        ttsChars += text.length;
+        res.writeHead(200, { "content-type": "audio/mpeg", "cache-control": "no-store" });
+        const reader = r.body.getReader();
+        let first = true;
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (first) { console.log(`[tts] first audio after ${Date.now() - t0} ms (${text.length} chars, total ${ttsChars}/${TTS_CAP})`); first = false; }
+          res.write(value);
+        }
+        return res.end();
+      } catch (err) {
+        console.log(`[tts] failed: ${(err as Error).name}`);
+        if (!res.headersSent) res.writeHead(503);
+        return res.end();
+      }
     }
     if (req.url === "/api/voice-stream" && req.method === "POST") {
       // Streams Hazel's reply as plain text so the browser can speak the first sentence early.
@@ -147,6 +187,7 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(`QSwapie Host Agent running at http://localhost:${PORT}`);
   console.log(`Agent mode: ${agent.mode}${agent.offlineReason ? ` (${agent.offlineReason})` : ""}`);
   console.log(`Speech-to-text: ${process.env.RESON8_API_KEY ? "Reson8" : "browser fallback (no RESON8_API_KEY)"}`);
+  console.log(`Hazel's voice: ${process.env.OPENAI_API_KEY ? `OpenAI ${TTS_MODEL} (${TTS_VOICE})` : "browser speechSynthesis (no OPENAI_API_KEY)"}`);
 });
 
 // When the guest entered their current state; messages from before it are shown greyed out.

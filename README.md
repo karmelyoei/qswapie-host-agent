@@ -64,6 +64,10 @@ No keys? It still runs: see [Fallbacks](#fallbacks).
 | `CLOSE_TIME` | `19:00` (17:30 on the morning shift) | Shop closing time for the capacity checks (also editable on the page) |
 | `PORT` | `5173` | HTTP port |
 | `AGENT_MAX_CALLS` | `150` | Hard cap on Claude calls per server run |
+| `OPENAI_API_KEY` | none | Hazel's voice via OpenAI text-to-speech (server-side only). Without it: the browser voice |
+| `OPENAI_TTS_VOICE` | `coral` | OpenAI voice name (e.g. coral, ballad, sage, verse, marin) |
+| `OPENAI_TTS_MODEL` | `gpt-4o-mini-tts` | OpenAI TTS model (supports style instructions) |
+| `TTS_MAX_CHARS` | `20000` | Cost cap: total TTS characters per server run (count shown on the barber page) |
 | `WAKE_WORDS` | `hey hazel,hazel,hey hasel,hey hazle,hey q,hey queue,hey cue,hey kyu` | Comma-separated wake words for the barber page |
 
 Keys are read only by the server and never sent to the browser or written to logs.
@@ -114,7 +118,7 @@ Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (diagrams, triggers, 
 The demo never dies on stage:
 - **Claude** down, slow or without a key: offline rules take over (orange label) and Claude is retried after 15 s. Labels show the real cause: `timeout`, `network`, or `API 4xx: message`.
 - **Reson8** missing or failing: the browser Web Speech API takes over. No mic at all: the typed box.
-- **Text to speech**: browser `speechSynthesis`, preferring Natural neural voices.
+- **Text to speech**: OpenAI TTS through the server (`POST /api/tts`, one sentence at a time, fetched in parallel and played in order). No key, an error or more than 4 s without audio: the browser `speechSynthesis` voice takes over for a minute. The mic pauses while Hazel speaks.
 
 ### Cost guards
 
@@ -149,6 +153,7 @@ pitch/              pitch and submission outlines
 
 - **Hazel artwork** created by Karmel Salah with ChatGPT (`public/img/hazel*.webp`). If the image fails to load, an original SVG squirrel drawn for this project is shown instead.
 - Stage skin (`public/skin/`) designed with OpenAI Codex during the hackathon.
+- **Voice by OpenAI TTS** (`gpt-4o-mini-tts`, voice `coral` by default) when `OPENAI_API_KEY` is set; the brain stays Claude and the ears stay Reson8 (or the browser).
 
 ## License
 

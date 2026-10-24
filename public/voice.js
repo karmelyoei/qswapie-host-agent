@@ -7,7 +7,7 @@ function vctl() {
   const icon = speaking ? "🔊" : thinking ? "✦" : listening ? "⏺" : "🎙";
   if ($("orbIcon")) $("orbIcon").textContent = icon;
   if ($("muteBtn")) $("muteBtn").textContent = muted ? "🔇 Voice off" : "🔊 Voice on";
-  if ($("sttLabel")) $("sttLabel").textContent = sttMode ? "STT: " + sttMode : "";
+  if ($("sttLabel")) $("sttLabel").textContent = (sttMode ? "STT: " + sttMode + " · " : "") + "Voice: " + (voiceSource || (useOpenAI() ? "OpenAI" : "browser")) + (S && S.tts && S.tts.openai ? ` (${S.tts.voice}, ${S.tts.chars}/${S.tts.cap} chars)` : "");
   // State hooks for skins: orb on #voice-panel, mascot in the top bar.
   const orb = thinking ? "thinking" : speaking ? "speaking" : listening ? "listening" : "idle";
   if ($("voice-panel")) $("voice-panel").className = "is-" + orb;
@@ -21,11 +21,13 @@ function vctl() {
 function renderVoice() {
   if ($("closeAt") && document.activeElement !== $("closeAt")) $("closeAt").value = S.closeAt;
   const maxId = S.voice.length ? S.voice[S.voice.length - 1].id : 0;
+  if (lastSpoken !== null && maxId < lastSpoken) stopAllSpeech(); // Restart day: stop anything still playing
   if (lastSpoken === null || maxId < lastSpoken) lastSpoken = maxId; // page load or reset: don't replay history
   for (const v of S.voice) if (v.id > lastSpoken) {
     lastSpoken = v.id;
     if (v.who !== "agent") continue;
     if (!v.proactive && streamedReplies > 0) { streamedReplies--; continue; }
+    setHold(true); // the clock waits while Hazel announces something
     speak(v.text);
     awakeUntil = Date.now() + 9000; // proactive news: give the barber a moment to answer without the wake word
   }
@@ -58,7 +60,66 @@ function loadVoices() {
 function chosenVoice() { return voices.find(v => v.name === $("voicePick").value) || voices[0] || null; }
 if (window.speechSynthesis) { loadVoices(); speechSynthesis.addEventListener("voiceschanged", loadVoices); }
 
+// Hazel's voice: OpenAI TTS through our server (sentence by sentence, fetched in parallel, played in order).
+// Any error or more than 4 s without audio: the browser voice takes over for a minute.
+let audioQ = [], audioPlaying = false, ttsDownUntil = 0, currentAudio = null, voiceSource = "";
+function useOpenAI() { return !!(S && S.tts && S.tts.openai) && Date.now() > ttsDownUntil; }
+async function fetchTts(text) {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const r = await fetch("/api/tts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }), signal: ctrl.signal });
+    if (!r.ok) throw new Error("tts " + r.status);
+    return URL.createObjectURL(await r.blob());
+  } finally { clearTimeout(to); }
+}
 function say(text) {
+  if (muted) return;
+  const parts = (text.match(/[^.!?]+[.!?]*/g) || [text]).map(x => x.trim()).filter(Boolean);
+  if (!useOpenAI()) { voiceSource = "browser"; return sayBrowser(text); }
+  voiceSource = "OpenAI";
+  for (const p of parts) {
+    const item = { text: p, url: null, failed: false };
+    item.ready = fetchTts(p).then(u => { item.url = u; }).catch(() => { item.failed = true; });
+    audioQ.push(item);
+  }
+  playNext();
+}
+function browserLine(text) { // one utterance as a promise, for the fallback inside the OpenAI queue
+  return new Promise((res) => {
+    if (!window.speechSynthesis) return res();
+    const u = new SpeechSynthesisUtterance(text); const v = chosenVoice();
+    if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-US";
+    u.onend = u.onerror = () => res();
+    setTimeout(res, 2500 + text.split(" ").length * 450);
+    speechSynthesis.speak(u);
+  });
+}
+async function playNext() {
+  if (audioPlaying) return;
+  const item = audioQ.shift();
+  if (!item) { if (speaking) { speaking = false; resumeRec(); vctl(); } return; }
+  audioPlaying = true; speaking = true; pauseRec(); vctl();
+  await item.ready;
+  const done = () => { audioPlaying = false; currentAudio = null; playNext(); };
+  if (item.failed || !item.url) {
+    ttsDownUntil = Date.now() + 60000; voiceSource = "browser (OpenAI failed)";
+    await browserLine(item.text); return done();
+  }
+  const a = new Audio(item.url); currentAudio = a;
+  a.onended = () => { URL.revokeObjectURL(item.url); done(); };
+  a.onerror = async () => { await browserLine(item.text); done(); };
+  try { await a.play(); } catch { await browserLine(item.text); done(); }
+}
+// Stop everything Hazel is saying (Restart day, mute).
+function stopAllSpeech() {
+  audioQ = []; try { currentAudio && currentAudio.pause(); } catch {} currentAudio = null; audioPlaying = false;
+  try { speechSynthesis.cancel(); } catch {}
+  if (streamCtrl) { try { streamCtrl.abort(); } catch {} streamCtrl = null; }
+  speaking = false; thinking = false; streamedReplies = 0; awakeUntil = 0;
+  vctl();
+}
+function sayBrowser(text) {
   if (muted || !window.speechSynthesis) return;
   const v = chosenVoice();
   // Sentence by sentence sounds less robotic than one long utterance.
@@ -83,7 +144,7 @@ function say(text) {
 function speak(text) { say(text); }
 
 const FILLERS = ["Hmm, let me check the chairs...", "One sec...", "Checking the book..."];
-let streamedReplies = 0, awakeUntil = 0, holding = false;
+let streamedReplies = 0, awakeUntil = 0, holding = false, streamCtrl = null;
 const pref = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 let sttChoice = pref("hazelStt", "reson8");        // "reson8" or "browser"
@@ -148,7 +209,8 @@ async function sendVoice(text) {
   const filler = setTimeout(() => { if (!firstSpoken) say(FILLERS[Math.floor(Math.random() * FILLERS.length)]); }, 1500);
   try {
     streamedReplies++;
-    const r = await fetch("/api/voice-stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    streamCtrl = new AbortController();
+    const r = await fetch("/api/voice-stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }), signal: streamCtrl.signal });
     const reader = r.body.getReader(), dec = new TextDecoder();
     for (;;) {
       const { value, done } = await reader.read();
@@ -165,7 +227,9 @@ async function toggleMic() {
   if (listening) return stopMic();
   listening = true; vctl();
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {} // unlock audio on this click
-  if (sttChoice === "reson8" && S.reson8 && await startReson8()) return;
+  let ok = false;
+  try { ok = sttChoice === "reson8" && S.reson8 && await startReson8(); } catch { stopMicAudio(); ok = false; }
+  if (ok) return;
   if (startWebSpeech()) return;
   listening = false; sttMode = "typed only"; vctl();
   $("typed").focus();
@@ -220,7 +284,11 @@ async function startReson8() {
     if (!ws || ws.readyState !== 1) return;
     const f = e.inputBuffer.getChannelData(0);
     const n = Math.floor(f.length / ratio), out = new Int16Array(n);
-    for (let i = 0; i < n; i++) { const x = speaking ? 0 : f[Math.floor(i * ratio)]; out[i] = Math.max(-1, Math.min(1, x)) * 0x7fff; }
+    for (let i = 0; i < n; i++) {
+      let x = 0;
+      if (!speaking) { const a = Math.floor(i * ratio), b = Math.max(a + 1, Math.floor((i + 1) * ratio)); for (let j = a; j < b; j++) x += f[j]; x /= (b - a); }
+      out[i] = Math.max(-1, Math.min(1, x)) * 0x7fff;
+    }
     ws.send(out.buffer);
     let sum = 0; for (let i = 0; i < f.length; i++) sum += f[i] * f[i];
     const rms = Math.sqrt(sum / f.length); meter(rms);

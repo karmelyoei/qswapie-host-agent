@@ -31,7 +31,7 @@
         <div class="chair-status"><span class="chair-icon" aria-hidden="true">✳</span><div><b>Chair 01</b><small id="chairText">–</small></div><i id="chairTag">IN SERVICE</i></div>
         <div class="skin-ctl">
           <label>Closing <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></label>
-          <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) speechSynthesis.cancel(); vctl()">🔊 Voice on</button>
+          <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) stopAllSpeech(); vctl()">🔊 Voice on</button>
           <label>Voice <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select></label>
           <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>
           <label><input type="checkbox" id="wakeToggle" onchange="wakeOn=this.checked; setPref('hazelWake', this.checked ? 'on' : 'off')"> Wake word</label>
@@ -104,7 +104,7 @@
       </aside>
     </main>
 
-    <footer class="voice-footer"><span><span class="footer-pulse"></span> HAZEL IS ON SHIFT</span><span><button class="link-btn" type="button" onclick="if(confirm('Restart the barber day?')) act({type:'reset',scenario:'barber'})">Restart day</button> · <a href="/barber?skin=old">Classic look</a></span><a href="/" target="_blank">← Queue dashboard</a></footer>
+    <footer class="voice-footer"><span><span class="footer-pulse"></span> HAZEL IS ON SHIFT</span><span><button class="link-btn" type="button" onclick="if(confirm('Restart the barber day?')) (stopAllSpeech(), act({type:'reset',scenario:'barber'}))">Restart day</button> · <a href="/barber?skin=old">Classic look</a></span><a href="/" target="_blank">← Queue dashboard</a></footer>
   </div>
 <script>
 let S = null;

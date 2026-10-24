@@ -212,7 +212,7 @@ export class Sim {
   // Barber gave the go-ahead: the clock runs and the scripted day begins.
   go(addMore: boolean) {
     if (this.running) return;
-    this.dayStarted = true; this.running = true; this.speed = 1;
+    this.dayStarted = true; this.running = true; this.speed = 3; // the scripted day reaches 10:30 in about 30 s
     if (this.scenario !== "barber") return;
     if (addMore) this.setJoins(true, this.barberName);
     this.at(10 * 60 + 30 - this.t, () => this.linaCancels());

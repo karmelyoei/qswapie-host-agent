@@ -319,7 +319,7 @@ export class Agent {
       write(reply);
     } else if (sim.scenario === "barber" && sim.dayStarted && !sim.running) {
       // Go-ahead after the greeting: finish at five (default) or add more clients; the clock starts.
-      const addMore = /\b(add|more|extra)\b/.test(t) && !/\b(no|finish at|is good|enough)\b/.test(t);
+      const addMore = /\b(add|more|extra)\b/.test(t) && !/\b(no|not|don'?t|do not|finish at|is good|enough)\b/.test(t);
       sim.go(addMore);
       const d = sim.daySummary();
       reply = addMore
@@ -358,7 +358,7 @@ export class Agent {
       const t0 = Date.now();
       let first = 0;
       const run = async () => {
-        const stream = this.client!.messages.stream(params);
+        const stream = this.client!.messages.stream(params, { timeout: 12000, maxRetries: 0 }); // voice must fail fast; the guest agent keeps 30 s
         stream.on("text", (d: string) => { if (!first) first = Date.now() - t0; said += d; write(d); });
         return stream.finalMessage();
       };
