@@ -133,7 +133,8 @@ src/server.ts   HTTP server, /api/state, /api/action, /stt WebSocket proxy to Re
 public/index.html   queue page (/ and /guests)
 public/barber.html  barber voice page (/barber)
 public/voice.js     mic capture, Reson8 / Web Speech, speech output, voice picker
-public/skin/        stage skin: barber page with orb and Hazel the squirrel (squirrel.css, original SVG), agent-ui.css, mascot.svg, warm.css (default look)
+public/skin/        stage skin: barber page with the Hazel orb (squirrel.css), agent-ui.css, warm.css (default look)
+public/img/         Hazel artwork (WebP, full size for the orb, 128 px for the mascot)
 docs/               architecture and API documentation
 pitch/              pitch and submission outlines
 ```
@@ -143,6 +144,11 @@ pitch/              pitch and submission outlines
 - **Existed before**: QSwapie, the founder's digital queue product for walk-in venues (QR code, live place, wait anywhere, trade places). Its code lives in a separate repository and was **not** changed or connected.
 - **Built at the hackathon on 2026-10-24**: everything in this repository: the proactive queue agent and its tools, the barber voice agent (Reson8 proxy, voice tools, persona, speech output), the offline fallbacks, the queue simulation and demo data, both web pages, the stage skin (designed with Codex), the docs and the pitch outlines.
 - All guests are **simulated** with fake first names. No real people, no real venue data, no payments.
+
+## Credits
+
+- **Hazel artwork** created by Karmel Salah with ChatGPT (`public/img/hazel*.webp`). If the image fails to load, an original SVG squirrel drawn for this project is shown instead.
+- Stage skin (`public/skin/`) designed with OpenAI Codex during the hackathon.
 
 ## License
 

@@ -14,7 +14,7 @@
   <div class="voice-app">
     <header class="voice-header">
       <a class="voice-brand" href="/" target="_blank" aria-label="QSwapie queue dashboard">
-        <img id="mascot" class="is-idle" src="/skin/mascot.svg" alt="Swapie, the queue helper" width="44" height="44">
+        <img id="mascot" class="is-idle" src="/img/hazel-128.webp" alt="Hazel the squirrel" width="44" height="44">
         <span>QSwapie <small>HOST VISION</small></span>
       </a>
       <div class="venue-label"><span class="live-dot"></span> Kiez Cuts <span class="venue-divider">/</span> Berlin <span id="mode" class="mode-pill">…</span></div>
@@ -46,7 +46,8 @@
             <div class="core-ring ring-one"></div><div class="core-ring ring-two"></div><div class="core-ring ring-three"></div>
             <div class="core-halo"></div><div class="core-orb"><span class="core-glint"></span></div>
             <div class="hazel" aria-hidden="true">
-              <!-- Hazel: original squirrel drawing for this project -->
+              <!-- Hazel artwork by Karmel Salah (made with ChatGPT); the SVG below is the fallback if the image fails to load -->
+              <img class="hazel-img" src="/img/hazel.webp" alt="" onerror="this.parentNode.classList.add('no-img'); this.remove()">
               <svg viewBox="0 0 200 220" xmlns="http://www.w3.org/2000/svg">
                 <g class="sq-all">
                   <g class="sq-tail">

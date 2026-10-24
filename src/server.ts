@@ -106,7 +106,7 @@ const server = http.createServer(async (req, res) => {
     const file = PAGES[urlPath.replace(/\/+$/, "") || "/"] ?? urlPath.replace(/^\/+/, "");
     const full = path.join(PUBLIC, path.normalize(file));
     if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
-    res.writeHead(200, { "content-type": full.endsWith(".html") ? "text/html; charset=utf-8" : full.endsWith(".js") ? "text/javascript; charset=utf-8" : full.endsWith(".css") ? "text/css; charset=utf-8" : full.endsWith(".svg") ? "image/svg+xml" : "text/plain" });
+    res.writeHead(200, { "content-type": full.endsWith(".html") ? "text/html; charset=utf-8" : full.endsWith(".js") ? "text/javascript; charset=utf-8" : full.endsWith(".css") ? "text/css; charset=utf-8" : full.endsWith(".svg") ? "image/svg+xml" : full.endsWith(".webp") ? "image/webp" : full.endsWith(".png") ? "image/png" : "text/plain" });
     res.end(fs.readFileSync(full));
   } catch {
     res.writeHead(500); res.end("error");
