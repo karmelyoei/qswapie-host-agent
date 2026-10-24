@@ -282,17 +282,22 @@ export class Agent {
 
   async voice(text: string) { return this.voiceTurn(text, () => {}); }
 
+  private greeting() {
+    const sim = this.sim;
+    const d = sim.daySummary();
+    const done = spoken(d.finishAround).replace(" o'clock", "");
+    const w = sim.line.map((id) => sim.get(id)!);
+    const count = ["No one is", "One is", "Two are", "Three are", "Four are"][w.length] ?? `${w.length} are`;
+    const who = w.length >= 2 ? ` ${w[0].name} is next for a ${w[0].svc ?? "cut"}, then ${w[1].name} for a ${w[1].svc ?? "cut"}.` : w.length === 1 ? ` ${w[0].name} is next for a ${w[0].svc ?? "cut"}.` : "";
+    return `Morning ${sim.barberName}! You've got ${d.clientsToday} clients today, done around ${done}. ${count} waiting:${who} Want me to add more clients, or finish at ${done}?`.replace("waiting: Want", "waiting. Want");
+  }
+
   // The barber said the wake word for the first time: Hazel greets them with today's outlook.
   async greet() {
     const sim = this.sim;
     if (sim.dayStarted) return;
     sim.startDay();
-    const d = sim.daySummary();
-    const [lo, hi] = d.cutMinutes;
-    const reply = sim.scenario === "barber"
-      ? `Hey ${sim.barberName}! Today's gonna be packed: you've got ${d.clientsToday} clients, about ${lo} to ${hi} minutes each, so you'll be done around ${spoken(d.finishAround)}. Want me to open the queue for a couple more, say two extra?`
-      : `Hey ${sim.barberName}! ${d.clientsToday} clients today, ${d.waiting} waiting, done around ${spoken(d.finishAround)}.`;
-    sim.say("agent", reply, true);
+    sim.say("agent", this.greeting(), true);
   }
 
   // One voice turn. write() receives the reply text as it streams, so the browser can start speaking early.
@@ -301,14 +306,25 @@ export class Agent {
     const t0 = Date.now();
     sim.say("barber", text);
     let reply = "";
-    if (sim.scenario === "barber" && sim.dayStarted && !sim.running) {
-      // Go-ahead after the greeting: decide on extra walk-ins and start the clock.
-      const t = text.toLowerCase();
-      const open = /\b(yes|yeah|sure|open|go for it|do it)\b/.test(t) && !/\b(no|nope|enough|closed?)\b/.test(t);
-      sim.go(open);
-      reply = open
-        ? `You got it, ${sim.barberName}: two extra spots are open, and I'll handle cancels, swaps and rebooking. Let's go!`
-        : `Deal, ${sim.barberName}: fifteen it is and the queue stays closed. Anyone who cancels gets a new day, and their slot goes to the waitlist.`;
+    const t = text.toLowerCase();
+    if (sim.scenario === "barber" && !sim.dayStarted) {
+      // Nico's first words: Hazel greets with the day (instant template, numbers from the simulation).
+      sim.startDay();
+      reply = this.greeting();
+      write(reply);
+    } else if (sim.scenario === "barber" && sim.awaiting === "lina") {
+      // Nico decides what happens with Lina's slot.
+      const moveUp = /\b(move|up|earlier|shift|bring .* forward)\b/.test(t) && !/\b(someone new|new client|open it|waitlist)\b/.test(t);
+      reply = sim.decideLina(moveUp ? "moveup" : "new").replace(/\b(\d\d:\d\d)\b/g, (m) => spoken(m));
+      write(reply);
+    } else if (sim.scenario === "barber" && sim.dayStarted && !sim.running) {
+      // Go-ahead after the greeting: finish at five (default) or add more clients; the clock starts.
+      const addMore = /\b(add|more|extra)\b/.test(t) && !/\b(no|finish at|is good|enough)\b/.test(t);
+      sim.go(addMore);
+      const d = sim.daySummary();
+      reply = addMore
+        ? `You got it, ${sim.barberName}: the queue is open for a few more. I'll shout if anyone bails.`
+        : `Deal, closing the list at ${d.clientsToday === 10 ? "ten" : d.clientsToday}, done by ${spoken(d.finishAround).replace(" o'clock", "")}. I'll shout if anyone bails.`;
       write(reply);
     } else if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
       try { reply = await this.voiceStream(text, write); }

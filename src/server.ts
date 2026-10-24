@@ -41,7 +41,7 @@ function state() {
     agent: agent.status(),
     line: sim.line,
     guests: sim.guests.filter((g) => g.status !== "done" || sim.t - (g.endAt ?? 0) < 5).map((g) => ({
-      id: g.id, name: g.name, status: g.status, hurry: g.hurry, swapOk: g.swapOk, away: g.away, walk: g.walk,
+      id: g.id, name: g.name, status: g.status, svc: g.svc ?? null, slotAt: g.slotAt !== undefined ? clock(g.slotAt) : null, hurry: g.hurry, swapOk: g.swapOk, away: g.away, walk: g.walk,
       headedBack: g.headedBackAt !== undefined, wait: g.wait, quoted: g.quoted, place: sim.line.indexOf(g.id) + 1,
       calledMinAgo: g.calledAt !== undefined ? Math.round(sim.t - g.calledAt) : null,
       messages: g.messages.map((m) => ({ ...m, t: clock(m.t), old: m.t < stateAt(g) })),

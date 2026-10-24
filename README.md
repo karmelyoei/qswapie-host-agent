@@ -68,22 +68,22 @@ No keys? It still runs: see [Fallbacks](#fallbacks).
 
 Keys are read only by the server and never sent to the browser or written to logs.
 
-## 2-minute demo script: the morning shift
+## 2-minute demo script: Nico's day
 
 The story is scripted and the same on every run. Put `/` (queue) and `/barber` (Hazel) side by side.
 
 **Part 1: Nico and Hazel (about 90 s), on `/barber`**
-1. Click **Restart day** if needed: 09:00, one barber (Nico), 15 clients booked at about 30 to 45 minutes each, closed to walk-ins. The clock is paused.
-2. Tap **🎙 Start listening** once (browsers need one tap for the mic). From now on the mic listens hands-free.
-3. Say: *"Hey Hazel!"* Hazel greets proactively: *"Hey Nico! Today's gonna be packed: you've got 15 clients, about 30 to 45 minutes each, so you'll be done around five o'clock. Want me to open the queue for a couple more, say two extra?"*
-4. Say: *"No, 15 is enough till five. Let me know if someone cancels, swaps or wants to withdraw; contact them, ask why, offer to reschedule for another day, and open the spot for someone else."* Hazel confirms in one line, keeps the queue closed, and the clock starts (1 sim minute per second).
-5. Watch the queue page while Hazel reports each event in one spoken line:
-   - **10:30 Lina cancels.** On her phone the agent asks why and offers a new day; she answers "work came up", takes tomorrow 10:00, and **Max** from the waitlist gets her slot. Hazel: *"Heads up Nico: Lina cancelled, work came up, rebooked for tomorrow 10:00, and Max took the slot."*
-   - **About 11:05 Ada is in a hurry.** The guest agent asks Ben, who said he is happy to swap, and Ada goes first.
-   - **12:00 Omar withdraws.** Same flow: reason, rebooked for Thursday 14:00, and **Zoe** takes the slot.
-6. Anytime: *"Hey Hazel, how are we doing?"* gives a short status with the finish time. The small number under the mic is the time to Hazel's first spoken word.
+1. Click **Restart day** if needed. It's 09:00 and the clock is paused. The queue page shows 10 clients for today: **Paul** in the chair, **Alex** waiting (skin fade, about 40 min), then **Tobi** (beard trim and line-up, about 30 min), and the rest booked later in the day, each with a service.
+2. Tap **🎙 Start listening** once (browsers need one tap for the mic). The wake word is **off** by default, so just talk.
+3. Nico: *"Morning Hazel, how's today looking?"* Hazel: *"Morning Nico! You've got 10 clients today, done around five. Two are waiting: Alex is next for a skin fade, then Tobi for a beard trim and line-up. Want me to add more clients, or finish at five?"*
+4. Nico: *"Five is good, finish at five. If someone cancels, let me know."* Hazel: *"Deal, closing the list at ten, done by five. I'll shout if anyone bails."* The queue stays closed and the clock starts (1 sim minute per second). The waiting count changes only as the day plays out.
+5. **About 10:30 Lina cancels her 1 pm booking.** On her phone on `/`, the agent asks why ("work came up") and rebooks her for tomorrow 10:00. The clock pauses and Hazel asks: *"Heads up Nico: Lina cancelled for 1 pm, work came up, rebooked for tomorrow. Should I open her spot for someone new, or move everyone up a slot and finish earlier?"*
+6. Either answer works:
+   - *"Yes, open it, bring someone new."* Hazel: *"On it, offering the 1 pm slot to the waitlist."* The agent messages **Max** on the waitlist, Max says yes and takes the slot (visible on `/`), and Hazel confirms.
+   - *"Move everyone up."* Everyone booked after 1 pm gets "you can come 40 minutes earlier", and Hazel gives the new, earlier finish time.
+7. Anytime: *"How are we doing?"* gives a short status with the finish time. The small number next to the mic hint is the time to Hazel's first spoken word.
 
-The clock pauses while Nico and Hazel talk, so the story never runs away mid-sentence.
+The clock pauses while Nico and Hazel talk, so the story never runs away mid-sentence. Under the orb you see what the speech recognizer heard and a mic level meter; the panel lets you pick **Reson8** or **Browser** speech and turn the **wake word** ("Hey Hazel") on.
 
 **Part 2: the queue agent (about 30 s), on `/`**
 1. Point at the activity feed: every action has a *Why* and a *Claude* badge.

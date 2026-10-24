@@ -147,20 +147,20 @@ async function act(body) {
   poll();
 }
 
-const STATUS = { waiting: "", called: "called", serving: "in chair", done: "done", noshow: "no-show", left: "cancelled" };
+const STATUS = { waiting: "", called: "called", serving: "in chair", done: "done", noshow: "no-show", left: "cancelled", booked: "booked" };
 
 function guestCard(g) {
-  const pos = g.status === "waiting" ? g.place : g.status === "serving" ? "✂" : g.status === "called" ? "!" : "·";
+  const pos = g.status === "waiting" ? g.place : g.status === "serving" ? "✂" : g.status === "called" ? "!" : g.status === "booked" ? "🗓" : "·";
   let tags = "";
-  if (g.status !== "waiting") tags += `<span class="tag ${g.status}">${STATUS[g.status]}${g.status === "called" ? " " + g.calledMinAgo + "m ago" : ""}</span>`;
+  if (g.status !== "waiting") tags += `<span class="tag ${g.status}">${STATUS[g.status]}${g.status === "called" ? " " + g.calledMinAgo + "m ago" : ""}${g.status === "booked" && g.slotAt ? " " + g.slotAt : ""}</span>`;
   if (g.hurry) tags += `<span class="tag hurry">hurry</span>`;
   if (g.swapOk) tags += `<span class="tag swap">swap ok</span>`;
   if (g.headedBack) tags += `<span class="tag back">heading back</span>`;
-  const where = g.away ? (g.headedBack ? "walking back" : `away, ${g.walk} min walk`) : "in the shop";
+  const where = g.status === "booked" ? "arrives at " + g.slotAt : g.away ? (g.headedBack ? "walking back" : `away, ${g.walk} min walk`) : "in the shop";
   const wait = g.status === "waiting" && g.wait ? `${g.wait[0]}–${g.wait[1]} min` : "";
   return `<div class="gcard ${sel === g.id ? "sel" : ""}" onclick="sel='${g.id}';render()">
     <div class="pos">${pos}</div>
-    <div><div class="name">${esc(g.name)} ${tags}</div><div class="sub">${where} · ${g.messages.filter(m => m.from === "agent").length} agent msgs</div></div>
+    <div><div class="name">${esc(g.name)} ${tags}</div><div class="sub">${g.svc ? esc(g.svc) + " · " : ""}${where} · ${g.messages.filter(m => m.from === "agent").length} agent msgs</div></div>
     <div class="wait">${wait}</div></div>`;
 }
 
@@ -184,8 +184,8 @@ function render() {
   $("joinsBtn").textContent = S.joinsPaused ? "Open joins" : "Pause joins";
   $("joinsBtn").className = S.joinsPaused ? "on" : "";
 
-  const order = { serving: 0, called: 1, waiting: 2, noshow: 3, left: 3, done: 4 };
-  const gs = [...S.guests].sort((x, y) => order[x.status] - order[y.status] || (x.place - y.place));
+  const order = { serving: 0, called: 1, waiting: 2, booked: 3, noshow: 4, left: 4, done: 5 };
+  const gs = [...S.guests].sort((x, y) => order[x.status] - order[y.status] || (x.place - y.place) || String(x.slotAt).localeCompare(String(y.slotAt)));
   $("qcount").textContent = `${S.stats.waiting} waiting · ~${S.stats.backlog} min deep`;
   $("queue").innerHTML = gs.map(guestCard).join("");
 
@@ -193,8 +193,8 @@ function render() {
   const g = S.guests.find(x => x.id === sel);
   $("phoneName").textContent = g ? g.name : "";
   if (g) {
-    const HEAD = { left: ["Cancelled", "Hope to see you soon"], called: ["Your turn", "Please come to the counter"], serving: ["In the chair", "Enjoy your cut"], done: ["All done", "Thanks for visiting!"], noshow: ["Place released", "Scan the QR to rejoin"] };
-    const [big, range] = g.status === "waiting" ? [`#${g.place}`, g.wait ? `about ${g.wait[0]} to ${g.wait[1]} min` : ""] : HEAD[g.status];
+    const HEAD = { booked: ["Booked", ""], left: ["Cancelled", "Hope to see you soon"], called: ["Your turn", "Please come to the counter"], serving: ["In the chair", "Enjoy your cut"], done: ["All done", "Thanks for visiting!"], noshow: ["Place released", "Scan the QR to rejoin"] };
+    const [big, range] = g.status === "waiting" ? [`#${g.place}`, g.wait ? `about ${g.wait[0]} to ${g.wait[1]} min` : ""] : g.status === "booked" ? ["Booked", `today at ${g.slotAt} · ${g.svc || ""}`] : HEAD[g.status];
     const msgs = g.messages.slice().reverse().map(m => `<div class="msg ${m.from} ${m.old ? "old" : ""}"><div class="meta">${m.t} · ${m.from === "agent" ? "QSwapie host (AI)" : m.from === "guest" ? esc(g.name) : "QSwapie"}${m.old ? " · earlier" : ""}</div>${esc(m.text)}</div>`).join("");
     $("phone").innerHTML = `<div class="phone"><div class="top"><div class="tok">Kiez Cuts · your place</div><div class="big">${big}</div><div class="range">${range}</div></div>
       <div class="msgs">${msgs}</div>

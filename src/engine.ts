@@ -1,6 +1,6 @@
 // Simulated walk-in queue. All guests are fake; nothing talks to QSwapie.
 
-export type Status = "waiting" | "called" | "serving" | "done" | "noshow" | "left";
+export type Status = "waiting" | "called" | "serving" | "done" | "noshow" | "left" | "booked";
 
 export interface Msg { t: number; text: string; kind: string; from: "agent" | "system" | "guest" }
 
@@ -16,6 +16,8 @@ export interface Guest {
   willNoShow: boolean; // hidden from the agent
   service: number; // hidden from the agent
   expected?: number; // booked cut length, known to everyone (morning scenario)
+  svc?: string; // booked service, e.g. "skin fade"
+  slotAt?: number; // booked start time (sim minutes)
   headedBackAt?: number;
   calledAt?: number;
   arriveAt?: number;
@@ -33,7 +35,19 @@ export interface OwnerAlert { id: number; t: number; text: string; reason: strin
 
 export interface Swap { id: number; a: string; b: string; t: number; status: "proposed" | "accepted" | "declined" }
 
-// Morning shift: 15 booked clients in this order, then the waitlist (Max, Zoe).
+// Morning shift: 10 clients, done at 17:00. Paul is in the chair, Alex and Tobi are waiting, the rest are booked later.
+const DAY: { name: string; svc: string; dur: number; at?: number }[] = [
+  { name: "Paul", svc: "classic cut", dur: 45 },
+  { name: "Alex", svc: "skin fade", dur: 40 },
+  { name: "Tobi", svc: "beard trim and line-up", dur: 30 },
+  { name: "Sara", svc: "kids cut", dur: 30, at: 11 * 60 },
+  { name: "Jonas", svc: "fade and beard", dur: 50, at: 11 * 60 + 30 },
+  { name: "Lina", svc: "cut and wash", dur: 40, at: 13 * 60 },
+  { name: "Emma", svc: "buzz cut", dur: 25, at: 13 * 60 + 40 },
+  { name: "Omar", svc: "skin fade", dur: 40, at: 14 * 60 + 10 },
+  { name: "Ben", svc: "classic cut", dur: 45, at: 15 * 60 },
+  { name: "Ida", svc: "cut and style", dur: 45, at: 16 * 60 + 15 },
+];
 const MORNING_NAMES = ["Paul", "Mo", "Sara", "Jonas", "Emma", "Lina", "Theo", "Nora", "Ben", "Ada", "Omar", "Ida", "Karl", "Rosa", "Finn", "Max", "Zoe"];
 const MORNING_CUTS = [30, 35, 30, 30, 45, 30, 30, 30, 35, 30, 30, 30, 30, 35, 30]; // 480 min: done about 17:00
 const BARBER_NAMES = ["Paul", "Mo", "Ben", "Lina", "Ada", "Sara", "Jonas", "Emma", "Theo", "Nora", "Max", "Ida", "Karl", "Rosa", "Finn", "Lea", "Oskar", "Hanna", "Emil", "Zoe"];
@@ -94,12 +108,15 @@ export class Sim {
     const close = /^(\d{1,2}):(\d{2})$/.exec(process.env.CLOSE_TIME ?? "");
     if (close) this.closeAt = Number(close[1]) * 60 + Number(close[2]);
     if (scenario === "barber") {
-      // Morning shift: 09:00, one barber, 15 booked clients, closed to walk-ins.
       // The clock waits for the barber's go-ahead by voice; the day's events are scripted so every run is the same.
       this.names = MORNING_NAMES;
       this.t = 9 * 60; this.staff = 1; this.joinsPaused = true; this.voiceMode = true; this.running = false;
       if (!close) this.closeAt = 17 * 60 + 30;
-      MORNING_CUTS.forEach((cut, i) => this.join({ away: false, swapOk: i === 8, willNoShow: false, service: cut, expected: cut }, this.t - 30, true));
+      const mk = (d: (typeof DAY)[number]) => this.makeGuest({ name: d.name, svc: d.svc, service: d.dur, expected: d.dur, away: false, swapOk: false, willNoShow: false, hurry: false, slotAt: d.at });
+      const paul = mk(DAY[0]); paul.joinedAt = 8 * 60 + 50; paul.status = "serving"; paul.startAt = 8 * 60 + 55; paul.endAt = paul.startAt + paul.service;
+      this.guests.push(paul);
+      for (const d of DAY.slice(1, 3)) { const g = mk(d); g.joinedAt = 8 * 60 + 50; this.guests.push(g); this.line.push(g.id); g.messages.push({ t: this.t, text: `You're checked in at Kiez Cuts for a ${d.svc}.`, kind: "info", from: "system" }); }
+      for (const d of DAY.slice(3)) { const g = mk(d); g.status = "booked"; g.joinedAt = 8 * 60; this.guests.push(g); g.messages.push({ t: this.t, text: `Booked at Kiez Cuts: ${d.svc} at ${clock(d.at!)}.`, kind: "info", from: "system" }); }
       this.signals = [];
       this.recompute();
       return;
@@ -181,74 +198,89 @@ export class Sim {
 
   private at(dt: number, run: () => void) { this.scheduled.push({ at: this.t + dt, run }); }
 
-  // Barber woke the voice agent: the greeting happened, the clock still waits for the go-ahead.
+  // Barber spoke for the first time: Hazel greeted, the clock still waits for the go-ahead.
   startDay() {
     if (this.dayStarted) return;
     this.dayStarted = true;
     if (this.scenario !== "barber") this.running = true;
   }
 
-  // Barber gave the go-ahead: the clock runs and the scripted morning begins.
-  go(openForMore: boolean) {
+  agentMode: "AI" | "offline" = "offline"; // set by the agent, used to label scripted agent actions
+  voiceHoldUntil = 0; // real-time ms: the clock pauses while the barber talks to Hazel
+  awaiting: "" | "lina" = ""; // Hazel asked the barber a question and the clock waits for the answer
+
+  // Barber gave the go-ahead: the clock runs and the scripted day begins.
+  go(addMore: boolean) {
     if (this.running) return;
     this.dayStarted = true; this.running = true; this.speed = 1;
     if (this.scenario !== "barber") return;
-    if (openForMore) { this.setJoins(true, this.barberName); [20, 40].forEach((m) => this.at(m, () => this.join({ away: false, swapOk: false, willNoShow: false, service: 30, expected: 30 }))); this.at(45, () => this.setJoins(false, "Hazel")); }
-    const find = (n: string) => this.guests.find((g) => g.name === n);
-    const start = this.t;
-    const atClock = (hhmm: number, run: () => void) => this.at(hhmm - start, run);
-    atClock(10 * 60 + 30, () => this.cancelFlow(find("Lina"), "cancelled", "Work came up, sorry!", "work came up", "tomorrow 10:00", "Max"));
-    atClock(11 * 60 + 5, () => { const g = find("Ada"); if (g) this.setHurry(g.id); });
-    atClock(12 * 60, () => this.cancelFlow(find("Omar"), "withdrew", "My kid got sick, sorry.", "kid got sick", "Thursday 14:00", "Zoe"));
+    if (addMore) this.setJoins(true, this.barberName);
+    this.at(10 * 60 + 30 - this.t, () => this.linaCancels());
   }
 
-  agentMode: "AI" | "offline" = "offline"; // set by the agent, used to label scripted agent actions
-  voiceHoldUntil = 0; // real-time ms: the clock pauses while the barber talks to Hazel
+  private agentSays(g: Guest, text: string, reason: string, tool = "message_guest") {
+    g.messages.push({ t: this.t, text, kind: "update", from: "agent" });
+    this.log(this.agentMode, tool, `To ${g.name}: "${text}"`, reason);
+  }
+  private guestSays(g: Guest, text: string) { g.messages.push({ t: this.t, text, kind: "guest", from: "guest" }); }
 
-  // A booked client cancels: ask why, offer a new day, rebook, give the slot to the waitlist, tell the barber.
-  private cancelFlow(g: Guest | undefined, verb: string, reply: string, shortWhy: string, rebook: string, standinName: string) {
-    if (!g || g.status !== "waiting") return;
-    const idx = this.line.indexOf(g.id);
-    const slot = g.wait ? clock(this.t + g.wait[0]) : "";
-    g.messages.push({ t: this.t, text: "I can't make it today, sorry.", kind: "guest", from: "guest" });
+  // 10:30 Lina cancels her 13:00 booking: ask why, rebook, then pause and ask the barber what to do with the slot.
+  private linaCancels() {
+    const g = this.guests.find((x) => x.name === "Lina");
+    if (!g || g.status !== "booked") return;
+    this.guestSays(g, "Sorry, I can't make it at 1 today.");
     g.status = "left"; g.endAt = this.t;
-    this.recompute();
-    const m = this.agentMode;
-    const ask = `Sorry you can't make it, ${g.name}. Mind telling us why? Want to rebook for another day?`;
-    g.messages.push({ t: this.t, text: ask, kind: "update", from: "agent" });
-    this.log(m, "message_guest", `To ${g.name}: "${ask}"`, `${g.name} ${verb}: ask why and offer a new day`);
+    this.signal("Lina cancelled her 13:00 booking");
+    this.agentSays(g, "Sorry you can't make it, Lina. Mind telling us why? Want to rebook for another day?", "Lina cancelled: ask why and offer a new day");
     this.at(1, () => {
-      g.messages.push({ t: this.t, text: reply, kind: "guest", from: "guest" });
-      const offer = `No worries, hope all is well! Does ${rebook} work for you?`;
-      g.messages.push({ t: this.t, text: offer, kind: "update", from: "agent" });
-      this.log(m, "message_guest", `To ${g.name}: "${offer}"`, `reason: ${shortWhy}; offer the next free slot`);
+      this.guestSays(g, "Work came up, sorry!");
+      this.agentSays(g, "No worries, hope work goes well! Does tomorrow at 10:00 work for you?", "reason: work came up; offer the next free slot");
     });
     this.at(2, () => {
-      g.messages.push({ t: this.t, text: "Yes, perfect.", kind: "guest", from: "guest" });
-      const ok = `Booked: ${rebook}. See you then, ${g.name}!`;
-      g.messages.push({ t: this.t, text: ok, kind: "update", from: "agent" });
-      this.log(m, "rebook", `${g.name} rebooked for ${rebook}`, "guest said yes");
-      const s2 = this.join({ name: standinName, away: true, walk: 8, swapOk: false, willNoShow: false, service: 30, expected: 30 }, this.t, true);
-      this.line.splice(this.line.indexOf(s2.id), 1);
-      this.line.splice(Math.max(0, Math.min(idx, this.line.length)), 0, s2.id);
-      this.recompute();
-      s2.messages.push({ t: this.t, text: `Good news ${standinName}: a slot opened${slot ? " around " + slot : ""} at Kiez Cuts. It's yours, see you soon!`, kind: "update", from: "agent" });
-      this.log(m, "offer_slot", `Gave ${g.name}'s slot to ${standinName} from the waitlist`, "free slot, waitlist first");
-      this.event(`${g.name} ${verb} (${shortWhy}), rebooked for ${rebook}; ${standinName} took the slot`, true,
-        `Heads up ${this.barberName}: ${g.name} ${verb}, ${shortWhy}, rebooked for ${rebook}, and ${standinName} took the slot.`);
+      this.guestSays(g, "Yes, perfect.");
+      this.agentSays(g, "Booked: tomorrow 10:00. See you then, Lina!", "guest said yes", "rebook");
+      this.event("Lina cancelled her 1 pm (work came up), rebooked for tomorrow 10:00", true);
+      this.running = false; this.awaiting = "lina"; // the clock waits for the barber's decision
+      this.say("agent", `Heads up ${this.barberName}: Lina cancelled for 1 pm, work came up, rebooked for tomorrow. Should I open her spot for someone new, or move everyone up a slot and finish earlier?`, true);
+      this.spokenCursor = this.events.length;
     });
+  }
+
+  // Barber's answer about Lina's slot.
+  decideLina(choice: "new" | "moveup") {
+    if (this.awaiting !== "lina") return "";
+    this.awaiting = ""; this.running = true;
+    if (choice === "new") {
+      const max = this.makeGuest({ name: "Max", svc: "cut and wash", service: 40, expected: 40, away: false, swapOk: false, willNoShow: false, hurry: false, slotAt: 13 * 60 });
+      max.status = "booked"; max.joinedAt = this.t; this.guests.push(max);
+      this.agentSays(max, "Hi Max, a 1 pm slot just opened at Kiez Cuts. Want it?", "barber: offer Lina's slot to the waitlist", "offer_slot");
+      this.at(1, () => {
+        this.guestSays(max, "Yes please!");
+        this.agentSays(max, "Booked: today at 1 pm, cut and wash. See you then!", "Max accepted", "rebook");
+        this.event("Max took the 1 pm slot from the waitlist", true, `Good news ${this.barberName}: Max from the waitlist took the 1 pm slot.`);
+      });
+      return `On it, offering the 1 pm slot to the waitlist.`;
+    }
+    const later = this.guests.filter((x) => x.status === "booked" && (x.slotAt ?? 0) > 13 * 60);
+    for (const x of later) {
+      x.slotAt = (x.slotAt ?? 0) - 40;
+      this.agentSays(x, `Good news ${x.name}: you can come 40 minutes earlier, at ${clock(x.slotAt)}.`, "barber moved everyone up a slot", "reschedule");
+    }
+    this.event(`Everyone after 1 pm moved up 40 minutes`, false);
+    return `Done: everyone after one moves up forty minutes, so you'll finish around ${clock(this.finishAt())}.`;
   }
 
   // Minutes of work left for all chairs, and when the last client will be done.
   finishAt(extra = 0) {
-    let work = 0;
-    for (const g of this.guests) {
-      if (g.status === "serving") work += Math.max(0, (g.endAt ?? 0) - this.t);
-      if (g.status === "called") work += Math.max(0, (g.arriveAt ?? this.t) - this.t) + (g.expected ?? MEAN_SERVICE);
-    }
-    for (const id of this.line) work += this.get(id)?.expected ?? MEAN_SERVICE;
-    work += extra * MEAN_SERVICE;
-    return Math.round(this.t + work / Math.max(1, this.staff));
+    let T = this.t;
+    const serving = this.guests.filter((g) => g.status === "serving").map((g) => g.endAt ?? this.t);
+    if (serving.length >= this.staff) T = Math.min(...serving);
+    for (const g of this.guests) if (g.status === "called") T = Math.max(T, g.arriveAt ?? this.t) + (g.expected ?? MEAN_SERVICE);
+    for (const id of this.line) { const g = this.get(id)!; T = Math.max(T, g.slotAt ?? 0) + (g.expected ?? MEAN_SERVICE); }
+    const booked = this.guests.filter((g) => g.status === "booked").sort((a, b) => (a.slotAt ?? 0) - (b.slotAt ?? 0));
+    for (const g of booked) T = Math.max(T, g.slotAt ?? 0) + (g.expected ?? MEAN_SERVICE);
+    if (this.staff > 1) T = this.t + (T - this.t) / this.staff;
+    return Math.round(T + extra * 35);
   }
 
   daySummary() {
@@ -261,6 +293,9 @@ export class Sim {
       noShows: this.guests.filter((g) => g.status === "noshow").length,
       cutMinutes: this.cutRange(), finishAround: clock(this.finishAt()), barberName: this.barberName,
       nextClient: this.get(this.line[0] ?? "")?.name ?? null,
+      waitingNames: this.line.map((id) => { const g = this.get(id)!; return g.svc ? `${g.name} (${g.svc})` : g.name; }),
+      bookedLater: this.guests.filter((g) => g.status === "booked").map((g) => `${clock(g.slotAt ?? 0)} ${g.name}`),
+      awaitingDecision: this.awaiting || null,
       nextChairFreeInMin: this.nextChairFree(),
     };
   }
@@ -406,6 +441,13 @@ export class Sim {
 
     for (const p of [...this.pendingJoins]) {
       if (p.at <= this.t) { this.pendingJoins.splice(this.pendingJoins.indexOf(p), 1); this.join(p.opts); }
+    }
+    for (const g of this.guests) {
+      if (g.status === "booked" && g.slotAt !== undefined && this.t >= g.slotAt - 5) {
+        g.status = "waiting"; this.line.push(g.id);
+        g.messages.push({ t: this.t, text: `You're checked in for your ${g.svc ?? "cut"}.`, kind: "info", from: "system" });
+        this.event(`${g.name} checked in for ${g.svc}`, false);
+      }
     }
     for (const s of [...this.scheduled]) {
       if (s.at <= this.t) { this.scheduled.splice(this.scheduled.indexOf(s), 1); s.run(); }

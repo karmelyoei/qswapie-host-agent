@@ -124,12 +124,7 @@ async function handleUtterance(text, typed) {
   const awake = Date.now() < awakeUntil;
   if (cmd === null && !awake && !typed && wakeOn) { $("interim").textContent = `(heard "${text}": say "Hey Hazel" first)`; return; }
   setHold(true);
-  if (S && !S.dayStarted) { // first wake: Hazel greets with today's outlook
-    thinking = true; vctl();
-    try { await act({ type: "startday" }); } finally { thinking = false; vctl(); }
-    awakeUntil = Date.now() + 15000;
-    return;
-  }
+  if (S && !S.dayStarted) { heard(text, true); sendVoice(text); return; } // first words: Hazel greets with today's outlook
   const command = (cmd === null ? text : cmd).trim();
   heard(text, true);
   if (command.length < 2) { say(`Yes, ${S.barberName}?`); awakeUntil = Date.now() + 9000; return; }
