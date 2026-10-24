@@ -88,7 +88,9 @@ const server = http.createServer(async (req, res) => {
       return res.end("{}");
     }
     const urlPath = (req.url ?? "/").split("?")[0]; // allow ?voice=off, ?skin=new
-    const PAGES: Record<string, string> = { "/": "index.html", "/guests": "index.html", "/barber": "barber.html" };
+    // The Codex stage skin is the default; ?skin=old serves the classic barber page.
+    const oldSkin = /[?&]skin=old\b/.test(req.url ?? "");
+    const PAGES: Record<string, string> = { "/": "index.html", "/guests": "index.html", "/barber": oldSkin ? "barber.html" : "skin/barber.html" };
     const file = PAGES[urlPath.replace(/\/+$/, "") || "/"] ?? urlPath.replace(/^\/+/, "");
     const full = path.join(PUBLIC, path.normalize(file));
     if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }

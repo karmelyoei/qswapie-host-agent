@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111827">
+  <title>Fade · QSwapie Host</title>
+  <!-- Stage skin designed with Codex (barber.css, mascot.svg); warm.css adds the warm accent and app controls. -->
+  <link rel="stylesheet" href="/skin/barber.css">
+  <link rel="stylesheet" href="/skin/warm.css">
+</head>
+<body class="voice-page">
+  <div class="voice-app">
+    <header class="voice-header">
+      <a class="voice-brand" href="/" target="_blank" aria-label="QSwapie queue dashboard">
+        <img id="mascot" class="is-idle" src="/skin/mascot.svg" alt="Swapie, the queue helper" width="44" height="44">
+        <span>QSwapie <small>HOST VISION</small></span>
+      </a>
+      <div class="venue-label"><span class="live-dot"></span> Kiez Cuts <span class="venue-divider">/</span> Berlin <span id="mode" class="mode-pill">…</span></div>
+      <div class="voice-clock" id="voiceClock">--:--</div>
+    </header>
+
+    <main class="voice-layout">
+      <aside class="glass-panel shop-panel" aria-label="Shop overview">
+        <div class="panel-kicker">TODAY · LIVE QUEUE</div>
+        <h1><span id="greet">Good afternoon,</span><br><span id="barberName">Nico.</span></h1>
+        <p class="panel-copy">I’m keeping everyone moving while you focus on the cut.</p>
+        <div class="shop-stat"><span>Waiting now</span><strong id="stWaiting">– <small>guests</small></strong></div>
+        <div class="shop-stat"><span>Next up</span><strong class="next-guest" id="stNext">–</strong></div>
+        <div class="chair-status"><span class="chair-icon" aria-hidden="true">✳</span><div><b>Chair 01</b><small id="chairText">–</small></div><i id="chairTag">IN SERVICE</i></div>
+        <div class="skin-ctl">
+          <label>Closing <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></label>
+          <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) speechSynthesis.cancel(); vctl()">🔊 Voice on</button>
+          <label>Voice <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select></label>
+          <span class="tok" id="sttLabel"></span>
+        </div>
+        <div class="panel-foot"><span class="tiny-signal"></span> <span id="footNote">Queue status</span></div>
+      </aside>
+
+      <section class="voice-center" aria-label="Voice conversation with Fade">
+        <div class="assistant-id"><span class="assistant-avatar">F</span><div><strong>Fade</strong><small>Your AI shop host</small></div><span class="availability"><i></i> <span id="avail">READY</span></span></div>
+        <div class="core-wrap">
+          <div class="voice-core is-idle" id="voiceCore" role="img" aria-label="Fade is ready to listen">
+            <div class="core-grid"></div>
+            <div class="core-ring ring-one"></div><div class="core-ring ring-two"></div><div class="core-ring ring-three"></div>
+            <div class="core-halo"></div><div class="core-orb"><span class="core-glint"></span></div>
+            <div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="listening-caption"><span class="caption-pip"></span><span id="micState">Ready when you are</span></div>
+        </div>
+        <p class="prompt-line" id="interim">Ask me about the queue, a guest, or the next chair.</p>
+        <button id="startBtn" class="start-day" type="button" onclick="startDay()">▶ Start day</button>
+        <div class="voice-controls">
+          <button class="mic-button" id="micBtn" type="button" onclick="startOrMic()" aria-label="Start voice conversation"><span class="mic-icon" aria-hidden="true"></span><span class="mic-ripple"></span></button>
+          <span class="mic-hint">TAP TO TALK <kbd>SPACE</kbd></span>
+        </div>
+        <p class="voice-privacy"><span aria-hidden="true">◈</span> Speech by Reson8 · brain by Claude · voice stays in this room</p>
+      </section>
+
+      <aside class="glass-panel transcript-panel" aria-label="Conversation transcript">
+        <div class="transcript-head"><div><div class="panel-kicker">YOUR CONVERSATION</div><h2>On the floor</h2></div><span class="transcript-live"><i></i> LIVE</span></div>
+        <div class="transcript" id="voiceLog" aria-live="polite"></div>
+        <form class="typed" onsubmit="event.preventDefault(); const i=$('typed'); sendVoice(i.value); i.value='';">
+          <input id="typed" placeholder="Or type to Fade (stage too loud?)" autocomplete="off"><button type="submit">Send</button>
+        </form>
+        <button class="suggestion" type="button" onclick="sendVoice('Anything new?')"><span class="sparkle">✳</span><div><b>Quick ask</b><p>“Anything new?”</p></div><span class="suggestion-arrow">↗</span></button>
+      </aside>
+    </main>
+
+    <footer class="voice-footer"><span><span class="footer-pulse"></span> FADE IS ON SHIFT</span><span><button class="link-btn" type="button" onclick="if(confirm('Restart the barber day?')) act({type:'reset',scenario:'barber'})">Restart day</button> · <a href="/barber?skin=old">Classic look</a></span><a href="/" target="_blank">← Queue dashboard</a></footer>
+  </div>
+<script>
+let S = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+async function act(body) {
+  await fetch("/api/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  poll();
+}
+// Start day: unlock audio on this click, ask Fade for the greeting, then open the mic.
+async function startDay() {
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
+  $("startBtn").disabled = true;
+  thinking = true; vctl();
+  try { await act({ type: "startday" }); } finally { thinking = false; vctl(); }
+  if (!listening) toggleMic();
+}
+function startOrMic() { if (S && !S.dayStarted) startDay(); else toggleMic(); }
+// Skin hook called by voice.js on every state change.
+window.onVoiceState = (state) => {
+  $("avail").textContent = { idle: "READY", listening: "LISTENING", thinking: "THINKING", speaking: "TALKING" }[state];
+  $("voiceCore").setAttribute("aria-label", "Fade is " + (state === "idle" ? "ready to listen" : state));
+  $("micBtn").setAttribute("aria-label", state === "listening" ? "Stop listening" : "Start voice conversation");
+};
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !e.repeat && !/INPUT|TEXTAREA|BUTTON|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); startOrMic(); }
+});
+</script>
+<script src="/voice.js"></script>
+<script>
+function render() {
+  if (!S) return;
+  $("voiceClock").textContent = S.now;
+  const a = S.agent;
+  $("mode").className = "mode-pill " + (a.mode === "AI" ? "ai" : "off");
+  $("mode").textContent = a.mode === "AI" ? "● Claude live" : "● Offline rules";
+  $("mode").title = a.offlineReason || a.model;
+  const h = Number(S.now.slice(0, 2));
+  $("greet").textContent = h < 12 ? "Good morning," : h < 18 ? "Good afternoon," : "Good evening,";
+  $("barberName").textContent = S.barberName + ".";
+  $("stWaiting").innerHTML = `${S.stats.waiting} <small>guests</small>`;
+  const next = S.guests.find(g => g.status === "waiting" && g.place === 1);
+  $("stNext").innerHTML = next ? `${esc(next.name)} <small>· ${next.wait ? next.wait[0] + " to " + next.wait[1] + " min" : ""}</small>` : "–";
+  const chair = S.guests.find(g => g.status === "serving");
+  $("chairText").textContent = chair ? `${chair.name} in the chair` : "Free";
+  $("chairTag").textContent = chair ? "IN SERVICE" : "FREE";
+  $("footNote").textContent = `Queue ${S.joinsPaused ? "closed" : "open"} · ${S.stats.served} served · closing ${S.closeAt}`;
+  $("startBtn").classList.toggle("hidden", S.dayStarted);
+  renderVoice();
+  if (!thinking && !listening && $("interim").textContent === "") $("interim").textContent = "Ask me about the queue, a guest, or the next chair.";
+}
+async function poll() {
+  try { S = await (await fetch("/api/state")).json(); render(); } catch {}
+}
+setInterval(poll, 600);
+poll();
+</script>
+</body>
+</html>

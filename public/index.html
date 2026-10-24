@@ -84,11 +84,20 @@
   .typed { display:flex; gap:6px; margin-top:8px; }
   .typed input { flex:1; }
   @media (max-width: 1000px) { main { grid-template-columns:1fr; height:auto; } }
+  #mascot { display:none; } /* shown by the stage skin */
 </style>
+<script>
+  // Stage skin (designed with Codex) is the default look; ?skin=old keeps the classic look.
+  if (!/[?&]skin=old(&|$)/.test(location.search)) {
+    for (const href of ["/skin/agent-ui.css", "/skin/warm.css"]) {
+      const l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; document.head.appendChild(l);
+    }
+  }
+</script>
 </head>
 <body>
 <header>
-  <span id="mascot" class="is-idle" data-state="idle" aria-hidden="true"></span>
+  <img id="mascot" class="is-idle" src="/skin/mascot.svg" alt="Swapie, the queue helper" width="48" height="48">
   <h1><span>QSwapie</span> Host Agent</h1>
   <div class="clock" id="clock">--:--</div>
   <div id="mode" class="pill">...</div>
@@ -128,7 +137,7 @@
   </section>
 </main>
 <script>
-let S = null, sel = null;
+let S = null, sel = null, lastActKey = null, hopUntil = 0;
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 
@@ -157,8 +166,13 @@ function guestCard(g) {
 function render() {
   if (!S) return;
   $("clock").textContent = S.now;
-  const mood = S.agent.busy ? "thinking" : "idle";
-  $("mascot").className = "is-" + mood; $("mascot").dataset.state = mood;
+  // Mascot: wiggles while Claude thinks, hops when the agent just helped someone.
+  const top = S.activity.find(x => x.mode !== "sim");
+  const key = top ? top.t + top.tool + top.text : "";
+  if (lastActKey !== null && key && key !== lastActKey) hopUntil = Date.now() + 1300;
+  lastActKey = key;
+  const mood = S.agent.busy ? "thinking" : Date.now() < hopUntil ? "happy" : "idle";
+  if ($("mascot").className !== "is-" + mood) { $("mascot").className = "is-" + mood; $("mascot").dataset.state = mood; }
   const a = S.agent;
   $("mode").className = "pill " + (a.mode === "AI" ? "ai" : "off");
   $("mode").textContent = a.mode === "AI" ? `● Claude live${a.busy ? " · thinking…" : ""}` : `● Offline rules${a.offlineReason ? " · " + a.offlineReason : ""}`;

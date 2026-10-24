@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">Swapie</title>
+  <desc id="desc">A cheerful little blue fox with a ticket-shaped striped tail.</desc>
+  <g id="swapie" stroke-linecap="round" stroke-linejoin="round">
+    <!-- tail-ticket: a tiny queue ticket makes this fox uniquely QSwapie -->
+    <path d="M69 66c14 0 18-12 11-19-6-6-13-4-17 1" fill="none" stroke="#8aa8ff" stroke-width="13"/>
+    <path d="M76 49l4 3m-8 2 4 3" stroke="#62dca5" stroke-width="3"/>
+    <path d="M68 58h17a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4h-5l-5 4-1-4h-6a4 4 0 0 1-4-4V62a4 4 0 0 1 4-4z" fill="#dce6ff" stroke="#293e6d" stroke-width="2.5"/>
+    <path d="M71 65h10m-10 5h7" stroke="#5277d4" stroke-width="2.4"/>
+    <!-- bright ear tips and soft round head -->
+    <path d="M24 38 22 12c0-3 4-4 6-2l17 15m9 0L72 10c2-2 6 0 5 3l-4 26" fill="#7395f3" stroke="#293e6d" stroke-width="3"/>
+    <path d="m28 29-1-11 10 9m27 0 8-10-2 15" fill="#ffc7bd"/>
+    <path d="M16 50c0-18 14-31 32-31s32 13 32 31c0 19-13 33-32 33S16 69 16 50z" fill="#a9bcff" stroke="#293e6d" stroke-width="3"/>
+    <path d="M19 52c3-9 10-13 18-12 4 1 7 4 11 4s7-3 11-4c8-1 15 3 18 12-3 15-14 25-29 25S22 67 19 52z" fill="#f5f6ff"/>
+    <!-- mask, eyes, and a bright, friendly nose -->
+    <path d="M19 48c6-7 13-10 20-6 3 2 6 5 9 5s6-3 9-5c7-4 14-1 20 6-4 4-9 6-15 6-5 0-10-2-14-2s-9 2-14 2c-6 0-11-2-15-6z" fill="#839cf0" opacity=".72"/>
+    <ellipse cx="36" cy="49" rx="3.2" ry="4" fill="#172842"/>
+    <ellipse cx="60" cy="49" rx="3.2" ry="4" fill="#172842"/>
+    <circle cx="37" cy="48" r="1" fill="#fff"/><circle cx="61" cy="48" r="1" fill="#fff"/>
+    <path d="M43 59q5-5 10 0-5 6-10 0z" fill="#ff8d9b" stroke="#293e6d" stroke-width="1.8"/>
+    <path d="M48 64v3m0 0q-5 4-8 0m8 0q5 4 8 0" fill="none" stroke="#293e6d" stroke-width="2"/>
+    <circle cx="25" cy="59" r="3" fill="#ffc4bd"/><circle cx="71" cy="59" r="3" fill="#ffc4bd"/>
+    <path d="M20 88q2-6 8-6m48 6q-2-6-8-6" fill="none" stroke="#62dca5" stroke-width="4"/>
+  </g>
+</svg>

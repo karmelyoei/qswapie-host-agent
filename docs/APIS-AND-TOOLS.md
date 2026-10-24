@@ -129,7 +129,7 @@ JSON body `{ "type": ..., ... }`. Response is `{}`.
 | `closetime` | `value` as `HH:MM` | Sets the shop's closing time |
 | `voice` | `text` (trimmed, at most 500 characters) | Runs the voice agent on the barber's text and appends both lines to the transcript |
 
-The `/barber` page controls map onto these actions (Start day is `startday`); mute and the voice picker are browser-only. Static files: `/` and `/guests` serve `index.html`, `/barber` serves `barber.html`, plus `voice.js`.
+The `/barber` page controls map onto these actions (Start day is `startday`); mute and the voice picker are browser-only. Static files: `/` and `/guests` serve `index.html` (stage skin CSS loaded unless `?skin=old`), `/barber` serves `skin/barber.html` (the stage skin) or `barber.html` with `?skin=old`, plus `voice.js` and `/skin/*`.
 
 ### WebSocket /stt
 

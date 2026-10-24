@@ -5,23 +5,25 @@ let ws = null, audioCtx = null, micStream = null, proc = null, rec = null;
 
 function vctl() {
   const icon = speaking ? "🔊" : thinking ? "✦" : listening ? "⏺" : "🎙";
-  if ($("orbIcon")) $("orbIcon").textContent = icon; else $("micBtn").textContent = icon;
-  $("muteBtn").textContent = muted ? "🔇 Voice off" : "🔊 Voice on";
-  $("sttLabel").textContent = sttMode ? "STT: " + sttMode : "";
+  if ($("orbIcon")) $("orbIcon").textContent = icon;
+  if ($("muteBtn")) $("muteBtn").textContent = muted ? "🔇 Voice off" : "🔊 Voice on";
+  if ($("sttLabel")) $("sttLabel").textContent = sttMode ? "STT: " + sttMode : "";
   // State hooks for skins: orb on #voice-panel, mascot in the top bar.
   const orb = thinking ? "thinking" : speaking ? "speaking" : listening ? "listening" : "idle";
-  $("voice-panel").className = "is-" + orb;
+  if ($("voice-panel")) $("voice-panel").className = "is-" + orb;
+  if ($("voiceCore")) $("voiceCore").className = "voice-core is-" + orb; // stage skin orb
   const mood = thinking || (S && S.agent.busy) ? "thinking" : speaking ? "happy" : "idle";
   $("mascot").className = "is-" + mood; $("mascot").dataset.state = mood;
-  $("micState").textContent = S && !S.dayStarted && !thinking ? "Tap Start day, Fade will say hi." : thinking ? "Fade is thinking…" : speaking ? "Fade is talking (mic paused)" : listening ? "Listening… just talk." : "Tap the mic and talk. Fade answers out loud.";
+  if (window.onVoiceState) window.onVoiceState(orb);
+  if ($("micState")) $("micState").textContent = S && !S.dayStarted && !thinking ? "Tap Start day, Fade will say hi." : thinking ? "Fade is thinking…" : speaking ? "Fade is talking (mic paused)" : listening ? "Listening… just talk." : "Tap the mic and talk. Fade answers out loud.";
 }
 
 function renderVoice() {
-  if (document.activeElement !== $("closeAt")) $("closeAt").value = S.closeAt;
+  if ($("closeAt") && document.activeElement !== $("closeAt")) $("closeAt").value = S.closeAt;
   const maxId = S.voice.length ? S.voice[S.voice.length - 1].id : 0;
   if (lastSpoken === null || maxId < lastSpoken) lastSpoken = maxId; // page load or reset: don't replay history
   for (const v of S.voice) if (v.id > lastSpoken) { lastSpoken = v.id; if (v.who === "agent") speak(v.text); }
-  const html = S.voice.map(v => `<div class="vb ${v.who}"><div class="meta">${v.t} · ${v.who === "barber" ? esc(S.barberName) : "Fade (AI)" + (v.proactive ? " · proactive" : "")}</div>${esc(v.text)}</div>`).join("");
+  const html = S.voice.map(v => `<div class="vb ${v.who} transcript-item ${v.who === "barber" ? "barber" : "fade"}"><div class="meta speaker">${v.who === "barber" ? esc(S.barberName) : "<b>F</b> Fade (AI)" + (v.proactive ? " · proactive" : "")} <time>${v.t}</time></div><p>${esc(v.text)}</p></div>`).join("");
   const log = $("voiceLog");
   if (log.dataset.h !== html) {
     log.innerHTML = html || `<p class="tok">Try: "Beautiful morning! Let's optimise today, open the queue."</p>`;

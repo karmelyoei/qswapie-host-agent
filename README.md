@@ -10,7 +10,7 @@ Built at **Agentic AI Hack by Jamie** ({Tech: Europe}, Berlin, 2026-10-24), Open
 |---|---|
 | ![Fade, the barber voice sidekick, talking with Nico](docs/img/barber-page.jpg) | ![Live queue, guest phone and agent activity feed](docs/img/queue-page.jpg) |
 
-*Screenshots in offline mode (no API keys), same live simulation on both pages.*
+*Screenshots in offline mode (no API keys), same live simulation on both pages. The stage look is the default; add `?skin=old` to either URL for the classic look.*
 
 ## What it does
 
@@ -83,7 +83,7 @@ Keys are read only by the server and never sent to the browser or written to log
 2. Click a guest card to see their phone, with the wait range and the agent's messages.
 3. For the busy two-barber day, click **Reset** and then **Simulate rush**: watch head-back timing, no-shows, a hurry swap and the owner alert "pause new joins?". **End of day** writes a summary.
 
-Speed buttons (0.5x to 4x) control sim minutes per real second. Add `?voice=off` to the barber URL to keep Fade silent.
+Speed buttons (0.5x to 4x) control sim minutes per real second. Add `?voice=off` to the barber URL to keep Fade silent, or `?skin=old` for the classic look. On the barber page, Space also toggles the mic.
 
 ## How it works
 
@@ -115,7 +115,7 @@ The demo never dies on stage:
 
 ## Tech stack
 
-Node.js 24 (`http`, `fs`, built-in TypeScript type stripping, `process.loadEnvFile`), TypeScript, `@anthropic-ai/sdk`, `ws`, plain HTML/CSS/JS (no framework), browser Web Speech API. External services: Anthropic Messages API, Reson8 Turns. No database and no deploy: everything runs locally.
+Node.js 24 (`http`, `fs`, built-in TypeScript type stripping, `process.loadEnvFile`), TypeScript, `@anthropic-ai/sdk`, `ws`, plain HTML/CSS/JS (no framework), browser Web Speech API. The stage skin (`public/skin/`: orb, mascot "Swapie", restyle) was designed with OpenAI Codex during the hackathon and wired into the live app here; `warm.css` adds the warm accent. External services: Anthropic Messages API, Reson8 Turns. No database and no deploy: everything runs locally.
 
 ## Project layout
 
@@ -126,6 +126,7 @@ src/server.ts   HTTP server, /api/state, /api/action, /stt WebSocket proxy to Re
 public/index.html   queue page (/ and /guests)
 public/barber.html  barber voice page (/barber)
 public/voice.js     mic capture, Reson8 / Web Speech, speech output, voice picker
+public/skin/        stage skin: barber page with orb, agent-ui.css, mascot.svg, warm.css (default look)
 docs/               architecture and API documentation
 pitch/              pitch and submission outlines
 ```
@@ -133,7 +134,7 @@ pitch/              pitch and submission outlines
 ## Built today vs existed before
 
 - **Existed before**: QSwapie, the founder's digital queue product for walk-in venues (QR code, live place, wait anywhere, trade places). Its code lives in a separate repository and was **not** changed or connected.
-- **Built at the hackathon on 2026-10-24**: everything in this repository: the proactive queue agent and its tools, the barber voice agent (Reson8 proxy, voice tools, persona, speech output), the offline fallbacks, the queue simulation and demo data, both web pages, the docs and the pitch outlines.
+- **Built at the hackathon on 2026-10-24**: everything in this repository: the proactive queue agent and its tools, the barber voice agent (Reson8 proxy, voice tools, persona, speech output), the offline fallbacks, the queue simulation and demo data, both web pages, the stage skin (designed with Codex), the docs and the pitch outlines.
 - All guests are **simulated** with fake first names. No real people, no real venue data, no payments.
 
 ## License

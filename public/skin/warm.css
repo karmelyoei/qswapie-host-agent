@@ -1,0 +1,55 @@
+/* Warm accent on top of the Codex stage skin, plus styles for the live app controls. */
+:root { --warm: #ff7a59; --amber: #ffb547; --warm-soft: #ff7a5926; }
+
+/* ---------- Queue page (/) ---------- */
+header h1 span { color: var(--warm); }
+#mascot { cursor: default; }
+header button { white-space: nowrap; }
+header { row-gap: 8px; flex-wrap: wrap; }
+#speeds { display: inline-flex; gap: 4px; }
+#tok { min-width: 170px; max-width: 260px; }
+button.primary { background: linear-gradient(135deg, var(--warm), var(--amber)); border-color: transparent; color: #1b1208; }
+button.primary:hover { filter: brightness(1.08); }
+.feed .item.AI { border-left-color: var(--warm); background: linear-gradient(90deg, var(--warm-soft), transparent 60%); }
+.badge.AI { background: linear-gradient(135deg, var(--warm), var(--amber)); color: #1b1208; }
+.pill.ai { background: #3a1f14; color: var(--amber); }
+.gcard.sel { border-color: var(--warm); box-shadow: 0 0 0 1px var(--warm); }
+.msg.agent { border-left: 3px solid var(--warm); }
+.alert { border-color: var(--amber); }
+.stat b { color: var(--amber); }
+
+/* ---------- Barber page (/barber) ---------- */
+.mode-pill { margin-left: 10px; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+.mode-pill.ai { background: #3a1f14; color: var(--amber); }
+.mode-pill.off { background: #4a2a0a; color: #ffd071; }
+.voice-brand img#mascot { width: 44px; height: 44px; display: block; filter: drop-shadow(0 4px 8px #050b1790); animation: mascot-idle 3.1s ease-in-out infinite; }
+.voice-brand img#mascot.is-thinking { animation: mascot-think .55s ease-in-out infinite alternate; }
+.voice-brand img#mascot.is-happy { animation: mascot-hop .62s cubic-bezier(.28,.8,.32,1.25) infinite; }
+@keyframes mascot-idle { 0%,100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-4px) rotate(2deg); } }
+@keyframes mascot-think { from { transform: rotate(-7deg) scale(.98); } to { transform: rotate(7deg) scale(1.04); } }
+@keyframes mascot-hop { 0%,100% { transform: translateY(0) rotate(0); } 40% { transform: translateY(-12px) rotate(-9deg); } 70% { transform: translateY(1px) rotate(7deg); } }
+
+.start-day { margin: 4px auto 0; display: block; padding: 12px 26px; border: 0; border-radius: 999px; font: 700 16px/1 inherit; font-family: inherit;
+  background: linear-gradient(135deg, var(--warm), var(--amber)); color: #1b1208; cursor: pointer; box-shadow: 0 10px 30px #ff7a5955; }
+.start-day:hover { filter: brightness(1.08); }
+.start-day:disabled { opacity: .6; cursor: wait; }
+.hidden { display: none !important; }
+
+.skin-ctl { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 6px; font-size: 12px; color: #b4c2d8; }
+.skin-ctl label { display: flex; gap: 6px; align-items: center; }
+.skin-ctl input, .skin-ctl select, .skin-ctl button, .typed input, .typed button, .link-btn {
+  background: #ffffff10; color: inherit; border: 1px solid #ffffff22; border-radius: 10px; padding: 6px 9px; font: inherit; }
+.skin-ctl select { max-width: 190px; }
+.skin-ctl button, .typed button, .link-btn { cursor: pointer; }
+.skin-ctl button:hover, .typed button:hover, .link-btn:hover { border-color: var(--warm); }
+.tok { color: #8f9bb0; font-size: 11px; }
+
+.transcript-item.fade { border-left: 3px solid var(--warm); }
+.transcript .tok { padding: 8px; }
+.typed { display: flex; gap: 8px; margin: 10px 0; }
+.typed input { flex: 1; color: #eef3ff; }
+.typed button { background: linear-gradient(135deg, var(--warm), var(--amber)); color: #1b1208; border: 0; font-weight: 700; }
+button.suggestion { width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.link-btn { padding: 2px 8px; font-size: 12px; }
+.caption-pip { background: var(--warm); }
+.assistant-avatar { background: linear-gradient(135deg, var(--warm), var(--amber)); color: #1b1208; }
