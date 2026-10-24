@@ -6,6 +6,7 @@ let ws = null, audioCtx = null, micStream = null, proc = null, rec = null;
 function vctl() {
   const icon = speaking ? "🔊" : thinking ? "✦" : listening ? "⏺" : "🎙";
   if ($("orbIcon")) $("orbIcon").textContent = icon;
+  if ($("micToggle")) $("micToggle").textContent = listening ? "🎙 on" : "🎙 off";
   if ($("muteBtn")) $("muteBtn").textContent = muted ? "🔇 Voice off" : "🔊 Voice on";
   if ($("sttLabel")) $("sttLabel").textContent = (sttMode ? "STT: " + sttMode + " · " : "") + "Voice: " + (voiceSource || (useOpenAI() ? "OpenAI" : "browser")) + (S && S.tts && S.tts.openai ? ` (${S.tts.voice}, ${S.tts.chars}/${S.tts.cap} chars)` : "");
   // State hooks for skins: orb on #voice-panel, mascot in the top bar.

@@ -36,6 +36,7 @@
         <div class="skin-ctl">
           <label>Closing <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></label>
           <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) stopAllSpeech(); vctl()">🔊 Voice on</button>
+          <button id="micToggle" type="button" title="Pause or resume listening" onclick="toggleMic()">🎙 on</button>
           <label>Voice <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select></label>
           <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>
           <label class="debug-only">Brain <select id="brainPick" onchange="brainChoice=this.value; setPref('hazelBrain', this.value)"><option value="claude">Claude</option><option value="openai">OpenAI</option></select></label>
@@ -89,14 +90,14 @@
           </div>
           <div class="listening-caption"><span class="caption-pip"></span><span id="micState">Ready when you are</span></div>
         </div>
-        <div class="stt-debug"><div class="mic-meter"><i id="micLevel"></i></div><span id="heard"></span></div>
+        <div class="stt-debug debug-only"><div class="mic-meter"><i id="micLevel"></i></div><span id="heard"></span></div>
         <p class="prompt-line" id="interim">Say “Hey Hazel, how are we doing?”</p>
         <button id="startBtn" class="start-day hidden" type="button" onclick="startDay()">🎙 Start listening</button>
-        <div class="voice-controls">
+        <div class="voice-controls debug-only">
           <button class="mic-button" id="micBtn" type="button" onclick="startOrMic()" aria-label="Start voice conversation"><span class="mic-icon" aria-hidden="true"></span><span class="mic-ripple"></span></button>
           <span class="mic-hint">TAP ONCE, THEN SAY “HEY HAZEL” <kbd>SPACE</kbd></span> <span class="latency" id="latency" title="time to Hazel's first spoken word"></span>
         </div>
-        <p class="voice-privacy"><span aria-hidden="true">◈</span> Speech by Reson8 · brain by Claude · voice stays in this room</p>
+        <p class="voice-privacy"><span aria-hidden="true">◈</span> Ears by Reson8 · brain by Claude · voice by OpenAI</p>
       </section>
 
       <aside class="glass-panel transcript-panel" aria-label="Conversation transcript">
@@ -140,7 +141,7 @@ async function beginHazel() {
 window.onVoiceState = (state) => {
   $("avail").textContent = { idle: "READY", listening: "LISTENING", thinking: "THINKING", speaking: "TALKING" }[state];
   $("voiceCore").setAttribute("aria-label", "Hazel is " + (state === "idle" ? "ready to listen" : state));
-  $("micBtn").setAttribute("aria-label", state === "listening" ? "Stop listening" : "Start voice conversation");
+  if ($("micBtn")) $("micBtn").setAttribute("aria-label", state === "listening" ? "Stop listening" : "Start voice conversation");
 };
 document.addEventListener("keydown", (e) => {
   if (e.code === "Space" && !e.repeat && !/INPUT|TEXTAREA|BUTTON|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); const o = $("startOverlay"); if (o && !o.classList.contains("gone")) beginHazel(); else startOrMic(); }
