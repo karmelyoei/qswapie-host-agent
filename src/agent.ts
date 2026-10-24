@@ -52,6 +52,17 @@ const VOICE_TOOLS: Anthropic.Tool[] = [
   { name: "recent_events", description: "What happened since the barber last asked: cancellations, swaps, no-shows, joins.", input_schema: { type: "object", properties: {} } },
 ];
 
+// Short, honest label for why a Claude call failed.
+function failure(err: unknown) {
+  if (err instanceof Anthropic.APIConnectionTimeoutError) return "timeout";
+  if (err instanceof Anthropic.APIConnectionError) return "network";
+  if (err instanceof Anthropic.APIError) {
+    const msg = (err.error as any)?.error?.message ?? "";
+    return `API ${err.status ?? "?"}${msg ? `: ${String(msg).slice(0, 80)}` : ""}`;
+  }
+  return "agent error";
+}
+
 export class Agent {
   client: Anthropic | null;
   mode: "AI" | "offline";
@@ -62,12 +73,14 @@ export class Agent {
   inTok = 0;
   outTok = 0;
   private retryAt = 0;
+  private busySince = 0;
+  private lastSafetyNet = 0;
 
   private sim: Sim;
 
   constructor(sim: Sim) {
     this.sim = sim;
-    this.client = process.env.ANTHROPIC_API_KEY ? new Anthropic({ maxRetries: 0, timeout: 8000 }) : null; // fail fast: offline rules take over in the same tick
+    this.client = process.env.ANTHROPIC_API_KEY ? new Anthropic({ maxRetries: 1, timeout: 30000 }) : null;
     this.mode = this.client ? "AI" : "offline";
     if (!this.client) this.offlineReason = "no API key set";
   }
@@ -79,8 +92,13 @@ export class Agent {
   // Called every real second. Proactive: runs when the sim produced new signals or on a quiet heartbeat.
   async tick() {
     const sim = this.sim;
-    if (this.busy || sim.dayClosed || !sim.running) return;
+    if (sim.dayClosed || !sim.running) return;
     const now = Date.now();
+    if (this.busy) {
+      // A slow Claude call never freezes the venue: after 10 s the offline rules act as a safety net.
+      if (now - this.busySince > 10000 && now - this.lastSafetyNet > 3000) { this.lastSafetyNet = now; this.rules([]); }
+      return;
+    }
     if (now - this.lastRun < (this.mode === "AI" ? MIN_GAP_MS : 1000)) return;
     this.watchdog();
     if (!sim.signals.length) return;
@@ -93,11 +111,10 @@ export class Agent {
     if (this.client && this.mode === "AI" && this.calls >= MAX_CALLS) { this.mode = "offline"; this.offlineReason = "token budget reached"; }
 
     if (this.mode === "AI") {
-      this.busy = true;
+      this.busy = true; this.busySince = now;
       try { await this.runClaude(signals); }
       catch (err) {
-        const status = err instanceof Anthropic.APIError ? `API error ${err.status ?? "network"}` : "agent error";
-        this.goOffline(status);
+        this.goOffline(failure(err));
         this.rules(signals);
       } finally { this.busy = false; }
     } else {
@@ -106,7 +123,7 @@ export class Agent {
   }
 
   private goOffline(why: string) {
-    this.mode = "offline"; this.offlineReason = why; this.retryAt = Date.now() + 60000;
+    this.mode = "offline"; this.offlineReason = why; this.retryAt = Date.now() + 15000;
     this.sim.log("offline", "fallback", `Claude unavailable (${why}); offline rules took over`, "keep the venue running");
   }
 
@@ -164,11 +181,11 @@ export class Agent {
     // At most 2 requests per run: one to act, one more only if it asked to read state.
     for (let i = 0; i < 2; i++) {
       this.calls++;
-      const res = await this.client!.messages.create({
+      const res = await this.create("tick", {
         model: MODEL, max_tokens: MAX_TOKENS, system: SYSTEM, tools: TOOLS, messages,
         output_config: { effort: "low" },
       });
-      this.inTok += res.usage.input_tokens; this.outTok += res.usage.output_tokens;
+      
       if (res.stop_reason === "refusal") { this.rules(signals); return; }
       const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       if (!uses.length) {
@@ -182,6 +199,20 @@ export class Agent {
       const onlyReads = uses.every((u) => u.name === "get_queue" || u.name === "predict_wait");
       if (!onlyReads || res.stop_reason !== "tool_use") return;
       messages.push({ role: "assistant", content: res.content }, { role: "user", content: results });
+    }
+  }
+
+  // Every Claude request goes through here: token counter + duration log (never the key).
+  private async create(kind: string, params: Anthropic.MessageCreateParamsNonStreaming) {
+    const t0 = Date.now();
+    try {
+      const res = await this.client!.messages.create(params);
+      this.inTok += res.usage.input_tokens; this.outTok += res.usage.output_tokens;
+      console.log(`[claude] ${kind} ${Date.now() - t0} ms, ${res.usage.input_tokens} in / ${res.usage.output_tokens} out, stop=${res.stop_reason}`);
+      return res;
+    } catch (err) {
+      console.log(`[claude] ${kind} FAILED after ${Date.now() - t0} ms: ${failure(err)}: ${(err as Error).message}`);
+      throw err;
     }
   }
 
@@ -237,7 +268,7 @@ export class Agent {
     let reply = "";
     if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
       try { reply = await this.voiceClaude(); }
-      catch (err) { this.goOffline(err instanceof Anthropic.APIError ? `API error ${err.status ?? "network"}` : "agent error"); }
+      catch (err) { this.goOffline(failure(err)); }
     }
     if (!reply) reply = this.voiceRules(text);
     sim.say("agent", reply);
@@ -259,11 +290,11 @@ export class Agent {
     lastUser.content = `[now ${clock(sim.t)}, queue ${sim.joinsPaused ? "closed" : "open"}, closing ${clock(sim.closeAt)}]\n${lastUser.content}`;
     for (let i = 0; i < 4; i++) {
       this.calls++;
-      const res = await this.client!.messages.create({
+      const res = await this.create("voice", {
         model: MODEL, max_tokens: 600, system: VOICE_SYSTEM, tools: VOICE_TOOLS, messages,
         output_config: { effort: "low" },
       });
-      this.inTok += res.usage.input_tokens; this.outTok += res.usage.output_tokens;
+      
       if (res.stop_reason === "refusal") return "";
       const uses = res.content.filter((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
       const said = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join(" ").trim();
@@ -307,12 +338,12 @@ export class Agent {
     if (this.mode !== "AI" || !this.client) return `End of day: ${base}`;
     try {
       this.calls++;
-      const res = await this.client.messages.create({
+      const res = await this.create("summary", {
         model: MODEL, max_tokens: 400, output_config: { effort: "low" },
         system: "You are the AI host of a walk-in barbershop. Write the owner a 4-line end-of-day summary: what went well, what went wrong, one concrete tip for tomorrow. Plain text, no markdown.",
         messages: [{ role: "user", content: `Stats: ${JSON.stringify(st)}\nRecent agent actions:\n${this.sim.activity.slice(0, 25).map((a) => `${clock(a.t)} ${a.tool}: ${a.text}`).join("\n")}` }],
       });
-      this.inTok += res.usage.input_tokens; this.outTok += res.usage.output_tokens;
+      
       const text = res.content.filter((b): b is Anthropic.TextBlock => b.type === "text").map((b) => b.text).join("\n");
       return text || `End of day: ${base}`;
     } catch {
