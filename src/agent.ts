@@ -56,6 +56,13 @@ const VOICE_TOOLS: Anthropic.Tool[] = [
   { name: "recent_events", description: "What happened since the barber last asked: cancellations, swaps, no-shows, joins.", input_schema: { type: "object", properties: {} } },
 ];
 
+// 15 -> "fifteen" for spoken lines.
+function words(n: number) {
+  const W = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
+  const T: Record<number, string> = { 30: "thirty", 40: "forty", 45: "forty-five", 50: "fifty", 60: "sixty" };
+  return W[n] ?? T[n] ?? String(n);
+}
+
 // "17:40" -> "twenty to six", the way people say times out loud.
 function spoken(hhmm: string) {
   const [h, m] = hhmm.split(":").map(Number);
@@ -291,7 +298,8 @@ export class Agent {
     const w = sim.line.map((id) => sim.get(id)!);
     const count = ["No one is", "One is", "Two are", "Three are", "Four are"][w.length] ?? `${w.length} are`;
     const who = w.length >= 2 ? ` ${w[0].name} is next for a ${w[0].svc ?? "cut"}, then ${w[1].name} for a ${w[1].svc ?? "cut"}.` : w.length === 1 ? ` ${w[0].name} is next for a ${w[0].svc ?? "cut"}.` : "";
-    return `Morning ${sim.barberName}! You've got ${d.clientsToday} clients today, done around ${done}. ${count} waiting:${who} Want me to add more clients, or finish at ${done}?`.replace("waiting: Want", "waiting. Want");
+    const [lo, hi] = d.cutMinutes;
+    return `Morning ${sim.barberName}! You've got ${d.clientsToday} clients today, cuts between ${words(lo)} and ${words(hi)} minutes, so you'll be done around ${done}. ${count} waiting:${who} Want me to add more clients, or finish at ${done}?`.replace("waiting: Want", "waiting. Want");
   }
 
   // The barber said the wake word for the first time: Hazel greets them with today's outlook.
@@ -327,7 +335,7 @@ export class Agent {
       const d = sim.daySummary();
       reply = addMore
         ? `You got it, ${sim.barberName}: the queue is open for a few more. I'll shout if anyone bails.`
-        : `Deal, closing the list at ${d.clientsToday === 10 ? "ten" : d.clientsToday}, done by ${spoken(d.finishAround).replace(" o'clock", "")}. I'll shout if anyone bails.`;
+        : `Deal, closing the list at ${words(d.clientsToday)}, done by ${spoken(d.finishAround).replace(" o'clock", "")}. I'll shout if anyone bails.`;
       write(reply);
     } else {
       // Free questions: the chosen brain. OpenAI errors fall back to Claude silently.

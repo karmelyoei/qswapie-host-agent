@@ -35,19 +35,24 @@ export interface OwnerAlert { id: number; t: number; text: string; reason: strin
 
 export interface Swap { id: number; a: string; b: string; t: number; status: "proposed" | "accepted" | "declined" }
 
-// Morning shift: 10 clients, done at 17:00. Paul is in the chair, Alex and Tobi are waiting, the rest are booked later.
+// Morning shift: 15 clients, done at 17:00. Paul is in the chair, Alex and Tobi are waiting, the rest are booked later.
 const DAY: { name: string; svc: string; dur: number; at?: number }[] = [
-  { name: "Paul", svc: "classic cut", dur: 45 },
+  { name: "Paul", svc: "classic cut", dur: 40 },
   { name: "Alex", svc: "skin fade", dur: 40 },
   { name: "Tobi", svc: "beard trim and line-up", dur: 30 },
-  { name: "Sara", svc: "kids cut", dur: 30, at: 11 * 60 },
-  { name: "Jonas", svc: "fade and beard", dur: 50, at: 11 * 60 + 30 },
+  { name: "Sara", svc: "quick trim", dur: 15, at: 10 * 60 + 45 },
+  { name: "Jonas", svc: "fade and beard", dur: 40, at: 11 * 60 },
+  { name: "Emma", svc: "skin fade", dur: 40, at: 11 * 60 + 40 },
+  { name: "Ben", svc: "beard sculpt", dur: 40, at: 12 * 60 + 20 },
   { name: "Lina", svc: "cut and wash", dur: 40, at: 13 * 60 },
-  { name: "Emma", svc: "buzz cut", dur: 25, at: 13 * 60 + 40 },
-  { name: "Omar", svc: "skin fade", dur: 40, at: 14 * 60 + 10 },
-  { name: "Ben", svc: "classic cut", dur: 45, at: 15 * 60 },
-  { name: "Ida", svc: "cut and style", dur: 45, at: 16 * 60 + 15 },
-];
+  { name: "Ida", svc: "classic cut", dur: 30, at: 13 * 60 + 40 },
+  { name: "Theo", svc: "fade and beard", dur: 40, at: 14 * 60 + 10 },
+  { name: "Nora", svc: "quick trim", dur: 15, at: 14 * 60 + 50 },
+  { name: "Karl", svc: "classic cut", dur: 30, at: 15 * 60 + 5 },
+  { name: "Rosa", svc: "skin fade", dur: 40, at: 15 * 60 + 35 },
+  { name: "Finn", svc: "quick trim", dur: 15, at: 16 * 60 + 15 },
+  { name: "Omar", svc: "classic cut", dur: 30, at: 16 * 60 + 30 },
+]; // 15 clients, 08:55 to 17:00, cuts 15 to 40 min (about 32 on average)
 const MORNING_NAMES = ["Paul", "Mo", "Sara", "Jonas", "Emma", "Lina", "Theo", "Nora", "Ben", "Ada", "Omar", "Ida", "Karl", "Rosa", "Finn", "Max", "Zoe"];
 const MORNING_CUTS = [30, 35, 30, 30, 45, 30, 30, 30, 35, 30, 30, 30, 30, 35, 30]; // 480 min: done about 17:00
 const BARBER_NAMES = ["Paul", "Mo", "Ben", "Lina", "Ada", "Sara", "Jonas", "Emma", "Theo", "Nora", "Max", "Ida", "Karl", "Rosa", "Finn", "Lea", "Oskar", "Hanna", "Emil", "Zoe"];
@@ -113,7 +118,7 @@ export class Sim {
       this.t = 9 * 60; this.staff = 1; this.joinsPaused = true; this.voiceMode = true; this.running = false;
       this.closeAt = 17 * 60; // the story: ten clients, finish at five (CLOSE_TIME does not apply here)
       const mk = (d: (typeof DAY)[number]) => this.makeGuest({ name: d.name, svc: d.svc, service: d.dur, expected: d.dur, away: false, swapOk: false, willNoShow: false, hurry: false, slotAt: d.at });
-      const paul = mk(DAY[0]); paul.joinedAt = 8 * 60 + 50; paul.status = "serving"; paul.startAt = 8 * 60 + 55; paul.endAt = paul.startAt + paul.service;
+      const paul = mk(DAY[0]); paul.joinedAt = 8 * 60 + 50; paul.status = "serving"; paul.startAt = 8 * 60 + 55; // 5 minutes into his cut at 09:00 paul.endAt = paul.startAt + paul.service;
       this.guests.push(paul);
       for (const d of DAY.slice(1, 3)) { const g = mk(d); g.joinedAt = 8 * 60 + 50; this.guests.push(g); this.line.push(g.id); g.messages.push({ t: this.t, text: `You're checked in at Kiez Cuts for a ${d.svc}.`, kind: "info", from: "system" }); }
       for (const d of DAY.slice(3)) { const g = mk(d); g.status = "booked"; g.joinedAt = 8 * 60; this.guests.push(g); g.messages.push({ t: this.t, text: `Booked at Kiez Cuts: ${d.svc} at ${clock(d.at!)}.`, kind: "info", from: "system" }); }
@@ -301,7 +306,7 @@ export class Sim {
   }
 
   private cutRange() {
-    const cuts = this.guests.filter((g) => g.status === "waiting" || g.status === "called" || g.status === "serving").map((g) => g.expected ?? MEAN_SERVICE);
+    const cuts = this.guests.filter((g) => g.status === "waiting" || g.status === "called" || g.status === "serving" || g.status === "booked").map((g) => g.expected ?? MEAN_SERVICE);
     return cuts.length ? [Math.min(...cuts), Math.max(...cuts)] : [MEAN_SERVICE, MEAN_SERVICE];
   }
 
