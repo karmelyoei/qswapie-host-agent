@@ -52,7 +52,7 @@ export class Agent {
 
   constructor(sim: Sim) {
     this.sim = sim;
-    this.client = process.env.ANTHROPIC_API_KEY ? new Anthropic({ maxRetries: 1, timeout: 20000 }) : null;
+    this.client = process.env.ANTHROPIC_API_KEY ? new Anthropic({ maxRetries: 0, timeout: 8000 }) : null; // fail fast: offline rules take over in the same tick
     this.mode = this.client ? "AI" : "offline";
     if (!this.client) this.offlineReason = "no API key set";
   }

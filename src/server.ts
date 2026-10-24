@@ -33,7 +33,7 @@ function state() {
       id: g.id, name: g.name, status: g.status, hurry: g.hurry, swapOk: g.swapOk, away: g.away, walk: g.walk,
       headedBack: g.headedBackAt !== undefined, wait: g.wait, quoted: g.quoted, place: sim.line.indexOf(g.id) + 1,
       calledMinAgo: g.calledAt !== undefined ? Math.round(sim.t - g.calledAt) : null,
-      messages: g.messages.map((m) => ({ ...m, t: clock(m.t) })),
+      messages: g.messages.map((m) => ({ ...m, t: clock(m.t), old: m.t < stateAt(g) })),
     })),
     activity: sim.activity.slice(0, 60).map((a) => ({ ...a, t: clock(a.t) })),
     alerts: sim.alerts.slice(0, 8).map((a) => ({ ...a, t: clock(a.t) })),
@@ -87,3 +87,11 @@ http.createServer(async (req, res) => {
   console.log(`QSwapie Host Agent running at http://localhost:${PORT}`);
   console.log(`Agent mode: ${agent.mode}${agent.offlineReason ? ` (${agent.offlineReason})` : ""}`);
 });
+
+// When the guest entered their current state; messages from before it are shown greyed out.
+function stateAt(g: { status: string; calledAt?: number; startAt?: number; endAt?: number }) {
+  if (g.status === "called") return g.calledAt ?? 0;
+  if (g.status === "serving") return g.startAt ?? 0;
+  if (g.status === "done" || g.status === "noshow") return g.endAt ?? 0;
+  return -1;
+}

@@ -45,6 +45,11 @@
   .msg { background:var(--card); padding:7px 10px; border-radius:12px 12px 12px 4px; max-width:92%; font-size:13px; }
   .msg.agent { background:#2a2350; border:1px solid #4a3d99; }
   .msg .meta { font-size:10px; color:var(--mut); }
+  .msg.old { opacity:.4; }
+  .badge { display:inline-block; font-size:10px; font-weight:700; padding:1px 7px; border-radius:99px; margin-right:4px; }
+  .badge.AI { background:#0c3a52; color:var(--ai); }
+  .badge.offline { background:#4a2a0a; color:var(--warn); }
+  .badge.sim { background:#2b2f3a; color:var(--mut); }
   .phone .acts { display:flex; gap:6px; }
   .phone .acts button { flex:1; font-size:12px; }
   .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px; }
@@ -152,9 +157,9 @@ function render() {
   const g = S.guests.find(x => x.id === sel);
   $("phoneName").textContent = g ? g.name : "";
   if (g) {
-    const big = g.status === "waiting" ? `#${g.place}` : STATUS[g.status];
-    const range = g.status === "waiting" && g.wait ? `about ${g.wait[0]} to ${g.wait[1]} min` : g.status === "called" ? "It's your turn" : "";
-    const msgs = g.messages.slice().reverse().map(m => `<div class="msg ${m.from}"><div class="meta">${m.t} · ${m.from === "agent" ? "QSwapie host (AI)" : "QSwapie"}</div>${esc(m.text)}</div>`).join("");
+    const HEAD = { called: ["Your turn", "Please come to the counter"], serving: ["In the chair", "Enjoy your cut"], done: ["All done", "Thanks for visiting!"], noshow: ["Place released", "Scan the QR to rejoin"] };
+    const [big, range] = g.status === "waiting" ? [`#${g.place}`, g.wait ? `about ${g.wait[0]} to ${g.wait[1]} min` : ""] : HEAD[g.status];
+    const msgs = g.messages.slice().reverse().map(m => `<div class="msg ${m.from} ${m.old ? "old" : ""}"><div class="meta">${m.t} · ${m.from === "agent" ? "QSwapie host (AI)" : "QSwapie"}${m.old ? " · earlier" : ""}</div>${esc(m.text)}</div>`).join("");
     $("phone").innerHTML = `<div class="phone"><div class="top"><div class="tok">Kiez Cuts · your place</div><div class="big">${big}</div><div class="range">${range}</div></div>
       <div class="msgs">${msgs}</div>
       ${g.status === "waiting" ? `<div class="acts"><button onclick="act({type:'hurry',id:'${g.id}'})" ${g.hurry ? "disabled" : ""}>I'm in a hurry</button><button onclick="act({type:'swapok',id:'${g.id}'})" ${g.swapOk ? "disabled" : ""}>Happy to swap</button></div>` : ""}
@@ -167,7 +172,7 @@ function render() {
   $("summary").innerHTML = S.summary ? `<div class="summary"><b>End of day</b>\n${esc(S.summary)}</div>` : "";
   $("alerts").innerHTML = S.alerts.map(al => `<div class="alert ${al.status !== "open" ? "done" : ""}"><div><b>⚑ ${esc(al.text)}</b></div><div class="why">${al.t} · ${esc(al.reason)}</div>
     ${al.status === "open" ? `<div class="row">${al.action !== "none" ? `<button class="primary" onclick="act({type:'alert',id:${al.id},apply:true})">${al.action.replace("_", " ")}</button>` : ""}<button onclick="act({type:'alert',id:${al.id},apply:false})">${al.action !== "none" ? "Dismiss" : "OK"}</button></div>` : `<div class="why">${al.status}</div>`}</div>`).join("");
-  $("feed").innerHTML = S.activity.map(x => `<div class="item ${x.mode}"><div class="h">${x.t} · <b>${x.mode === "AI" ? "Claude" : x.mode === "offline" ? "Offline rules" : "Sim"}</b> · ${esc(x.tool)}</div><div>${esc(x.text)}</div>${x.reason ? `<div class="r">Why: ${esc(x.reason)}</div>` : ""}</div>`).join("") || `<p class="tok">The agent is watching. Click "Simulate rush".</p>`;
+  $("feed").innerHTML = S.activity.map(x => `<div class="item ${x.mode}"><div class="h"><span class="badge ${x.mode}">${x.mode === "AI" ? "Claude" : x.mode === "offline" ? "Offline rules" : "Simulation"}</span>${x.t} · ${esc(x.tool)}</div><div>${esc(x.text)}</div>${x.reason ? `<div class="r">Why: ${esc(x.reason)}</div>` : ""}</div>`).join("") || `<p class="tok">The agent is watching. Click "Simulate rush".</p>`;
 }
 
 async function poll() {

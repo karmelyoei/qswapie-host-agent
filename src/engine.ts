@@ -173,7 +173,7 @@ export class Sim {
     const g = this.get(id);
     if (!g || g.status !== "called") return "error: only a called guest can be marked no-show";
     if (this.t - (g.calledAt ?? this.t) < 3) return "error: give them at least 3 minutes";
-    g.status = "noshow";
+    g.status = "noshow"; g.endAt = this.t;
     this.sys(g, "We called you but you did not arrive, so your place was released. Scan the QR again to rejoin.");
     this.recompute();
     return `${g.name} marked no-show; next guest called`;
@@ -221,7 +221,7 @@ export class Sim {
           const late = this.t - (g.calledAt ?? 0);
           if (late >= 5 && !g.notified.includes("_late")) { g.notified.push("_late"); this.signal(`${g.name} was called ${Math.round(late)} min ago and has not arrived`); }
           if (late >= NO_SHOW_FAILSAFE) {
-            g.status = "noshow";
+            g.status = "noshow"; g.endAt = this.t;
             this.log("sim", "failsafe", `${g.name} auto-removed after ${NO_SHOW_FAILSAFE} min`, "nobody acted on the no-show");
           }
         }
