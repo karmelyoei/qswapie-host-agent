@@ -22,16 +22,37 @@ npm install && npm start
 
 Open http://localhost:5173
 
-**With Claude** (PowerShell, from this folder; the key is typed hidden and only lives in that window):
+**With Claude and Reson8** (PowerShell, from this folder; both keys are typed hidden and only live in that window):
 
 ```powershell
-$env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', (Read-Host 'Anthropic key' -AsSecureString)).Password; npm start
+$a = Read-Host 'Anthropic key' -AsSecureString; $r = Read-Host 'Reson8 key' -AsSecureString; $env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', $a).Password; $env:RESON8_API_KEY = [Net.NetworkCredential]::new('', $r).Password; npm start
 ```
 
-Or put `ANTHROPIC_API_KEY=...` in a local `.env` file (gitignored, see `.env.example`).
-Without a key, or if the API fails, the app keeps running in **Offline rules** mode (orange label at the top). It retries Claude after 60 seconds.
+Or put `ANTHROPIC_API_KEY=...` and `RESON8_API_KEY=...` in a local `.env` file (gitignored, see `.env.example`). Open the app in **Chrome** (mic and voices).
+
+Every part has a fallback, so the demo never dies on stage:
+- No Anthropic key, or the API fails: **Offline rules** mode (orange label). It retries Claude after 60 seconds.
+- No Reson8 key, or Reson8 fails: the browser's own speech recognition. No mic at all: the typed box under the voice panel.
+- `CLOSE_TIME=19:00` (env) or the Closing field in the voice panel sets the shop's closing time.
 
 ## 2-minute demo script
+
+### Part 1: Barber voice mode (about 90 s)
+
+The barber is cutting hair and talks to the agent, "Fade", hands-free. Fade answers out loud, while the guest-messaging agent keeps working in the background.
+
+1. Click **Barber day** (resets to 15:30, one barber, queue closed, closing time 19:00). The middle panel becomes **Barber voice**. Speed **1x**.
+2. Tap the big **mic** and say: *"Beautiful morning! Let's optimise today, open the queue."* Fade opens the queue and confirms. Walk-ins start appearing on the left.
+3. Say: *"How's today looking?"* Fade: you have 10 clients today and gives the finish time at this pace (real numbers from the simulation).
+4. Wait a few seconds (Ada taps "in a hurry", Lina cancels). Say: *"Anything new?"* Fade: Lina cancelled and walked away, Ben swapped with Ada because Ada was in a hurry. When a cut finishes, Fade also reports news by itself, briefly ("between cuts").
+5. About 20 seconds after opening, six more walk-ins have joined (15 clients today). Say: *"We've got 15 now. Should we close the queue for today, or do we have the power for 2 more?"* Fade runs a capacity check against the 19:00 closing time and answers with the finish time, plus a joke.
+6. Say: *"Close it."* Fade closes the queue. People already in line stay.
+
+While Fade talks, the mic pauses (no echo). **Voice on/off** mutes the speech. The label next to the panel title shows which speech-to-text is live: Reson8, browser speech, or typed only.
+
+### Part 2: The guest-messaging agent (about 30 s)
+
+Click **🎙 Barber voice** to switch the middle panel back to the guest phone, or click **Reset** for the busy two-barber demo below.
 
 1. Open http://localhost:5173. Point at the top bar: clock, **Claude live** label, model, calls and token counter.
 2. Left panel: the live queue. Each card shows place, wait range, where the guest is ("away, 6 min walk"), and tags.
@@ -56,11 +77,12 @@ The stat to point at: **idle chair** minutes, the time a barber waits for a gues
 - Token budget: at most one Claude run per 5 real seconds and only when something changed, at most 2 requests per run, hard cap of 150 calls per server run (`AGENT_MAX_CALLS` to change). The counter is on screen.
 - Offline rules: the same goals as fixed rules with template messages, used when there is no key, the API errors, or the budget is used up.
 - `src/server.ts`: plain Node HTTP server, `/api/state` and `/api/action`, serves `public/index.html`. The UI polls twice a second.
+- Barber voice mode: the browser sends 16 kHz mono PCM audio over a WebSocket to `/stt` on this server, which proxies it to the Reson8 **Turns** endpoint (`wss://api.reson8.dev/v1/speech-to-text/turns`, English) with the key added server-side, so the key never reaches the browser. On `turn_end` the final transcript goes to the same Claude agent with voice tools: `day_summary`, `estimate_finish`, `capacity_check`, `open_queue`, `close_queue`, `recent_events`. Answers are capped at 2 spoken sentences and read out with the browser's `speechSynthesis`. Offline, keyword intents give the same answers from the same numbers.
 
-No QSwapie production, staging or preview systems are called. The only network call is to the Anthropic API.
+No QSwapie production, staging or preview systems are called. The only network calls are to the Anthropic API and Reson8.
 
 ## Built today vs existed before
 
 - **Existed before**: QSwapie, the digital queue product for walk-in venues (guests scan a QR code, see their live place, wait anywhere, can trade places). Its code lives in a separate repository and was not changed or connected.
-- **Built today, 2026-10-24**: everything in this repository. The host agent and its tools, the offline fallback, the queue simulation and demo data, the web UI, and the pitch outlines.
+- **Built today, 2026-10-24**: everything in this repository. The host agent and its tools, barber voice mode (Reson8 proxy, voice tools, speech output), the offline fallbacks, the queue simulation and demo data, the web UI, and the pitch outlines.
 - All guests are simulated with fake first names. No real people, no real venue data, no payments.
