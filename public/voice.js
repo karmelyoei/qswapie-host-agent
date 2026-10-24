@@ -234,7 +234,7 @@ async function handleUtterance(text, typed) {
   text = (text || "").trim();
   if (!text || thinking) return;
   if (DUPLEX && !typed && isEcho(text)) { console.log("[duplex] echo dropped:", text); return; }
-  if (!DUPLEX && !typed && (speaking || audioPlaying) && text.split(/\s+/).length < 4) { audioLog("ignored short mic turn while Hazel speaks", text); return; }
+  if (!DUPLEX && !typed && (speaking || audioPlaying)) { audioLog("ignored mic turn while Hazel speaks", text); return; }
   const cmd = findWake(text);
   const awake = Date.now() < awakeUntil;
   if (cmd === null && !awake && !typed && wakeOn) { $("interim").textContent = `(heard "${text}": say "Hey Hazel" first)`; return; }
