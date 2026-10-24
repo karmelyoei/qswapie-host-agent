@@ -33,6 +33,8 @@
           <label>Closing <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></label>
           <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) speechSynthesis.cancel(); vctl()">🔊 Voice on</button>
           <label>Voice <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select></label>
+          <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>
+          <label><input type="checkbox" id="wakeToggle" onchange="wakeOn=this.checked; setPref('hazelWake', this.checked ? 'on' : 'off')"> Wake word</label>
           <span class="tok" id="sttLabel"></span>
         </div>
         <div class="panel-foot"><span class="tiny-signal"></span> <span id="footNote">Queue status</span></div>
@@ -82,6 +84,7 @@
           </div>
           <div class="listening-caption"><span class="caption-pip"></span><span id="micState">Ready when you are</span></div>
         </div>
+        <div class="stt-debug"><div class="mic-meter"><i id="micLevel"></i></div><span id="heard"></span></div>
         <p class="prompt-line" id="interim">Say “Hey Hazel, how are we doing?”</p>
         <button id="startBtn" class="start-day" type="button" onclick="startDay()">🎙 Start listening</button>
         <div class="voice-controls">
@@ -101,7 +104,7 @@
       </aside>
     </main>
 
-    <footer class="voice-footer"><span><span class="footer-pulse"></span> FADE IS ON SHIFT</span><span><button class="link-btn" type="button" onclick="if(confirm('Restart the barber day?')) act({type:'reset',scenario:'barber'})">Restart day</button> · <a href="/barber?skin=old">Classic look</a></span><a href="/" target="_blank">← Queue dashboard</a></footer>
+    <footer class="voice-footer"><span><span class="footer-pulse"></span> HAZEL IS ON SHIFT</span><span><button class="link-btn" type="button" onclick="if(confirm('Restart the barber day?')) act({type:'reset',scenario:'barber'})">Restart day</button> · <a href="/barber?skin=old">Classic look</a></span><a href="/" target="_blank">← Queue dashboard</a></footer>
   </div>
 <script>
 let S = null;
@@ -129,6 +132,7 @@ document.addEventListener("keydown", (e) => {
 });
 </script>
 <script src="/voice.js"></script>
+<script>$("sttPick").value = sttChoice; $("wakeToggle").checked = wakeOn;</script>
 <script>
 function render() {
   if (!S) return;

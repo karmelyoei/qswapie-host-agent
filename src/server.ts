@@ -121,16 +121,26 @@ wss.on("connection", (browser) => {
   const url = "wss://api.reson8.dev/v1/speech-to-text/turns?encoding=pcm_s16le&sample_rate=16000&channels=1&language=en";
   const upstream = new WebSocket(url, { headers: { Authorization: `ApiKey ${key}` } });
   const queued: Buffer[] = [];
-  upstream.on("open", () => { for (const b of queued.splice(0)) upstream.send(b); });
-  upstream.on("message", (data, isBinary) => { if (!isBinary && browser.readyState === WebSocket.OPEN) browser.send(data.toString()); });
-  upstream.on("unexpected-response", (_req, r) => { browser.close(4002, `Reson8 HTTP ${r.statusCode}`); upstream.terminate(); });
+  let bytes = 0;
+  const meter = setInterval(() => { if (bytes) console.log(`[reson8] audio in last 5 s: ${Math.round(bytes / 1024)} KB (16 kHz PCM16 is ~156 KB)`); bytes = 0; }, 5000);
+  upstream.on("open", () => { console.log("[reson8] connected (Turns, en, pcm_s16le 16 kHz mono)"); for (const b of queued.splice(0)) upstream.send(b); });
+  upstream.on("message", (data, isBinary) => {
+    if (isBinary) return;
+    const msg = data.toString();
+    try { const m = JSON.parse(msg); console.log(`[reson8] ${m.type}${m.text ? ": " + m.text : ""}`); } catch { console.log("[reson8] non-JSON message"); }
+    if (browser.readyState === WebSocket.OPEN) browser.send(msg);
+  });
+  upstream.on("unexpected-response", (_req, r) => {
+    console.log(`[reson8] rejected: HTTP ${r.statusCode} ${r.headers["x-error-message"] ?? ""}`); browser.close(4002, `Reson8 HTTP ${r.statusCode}`); upstream.terminate(); });
   upstream.on("error", () => { if (browser.readyState === WebSocket.OPEN) browser.close(4002, "Reson8 error"); });
-  upstream.on("close", (code) => { if (browser.readyState === WebSocket.OPEN) browser.close(4002, `Reson8 closed ${code}`); });
+  upstream.on("close", (code, reason) => {
+    clearInterval(meter); console.log(`[reson8] closed ${code} ${reason?.toString() ?? ""}`); if (browser.readyState === WebSocket.OPEN) browser.close(4002, `Reson8 closed ${code}`); });
   browser.on("message", (data, isBinary) => {
+    if (isBinary) bytes += (data as Buffer).length;
     if (isBinary) { if (upstream.readyState === WebSocket.OPEN) upstream.send(data as Buffer); else if (upstream.readyState === WebSocket.CONNECTING) queued.push(data as Buffer); }
     else if (upstream.readyState === WebSocket.OPEN) upstream.send(data.toString()); // e.g. flush_request
   });
-  browser.on("close", () => upstream.close());
+  browser.on("close", () => { clearInterval(meter); upstream.close(); });
 });
 
 server.listen(PORT, "127.0.0.1", () => {

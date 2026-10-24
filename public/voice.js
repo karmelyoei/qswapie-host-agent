@@ -84,6 +84,12 @@ function speak(text) { say(text); }
 
 const FILLERS = ["Hmm, let me check the chairs...", "One sec...", "Checking the book..."];
 let streamedReplies = 0, awakeUntil = 0, holding = false;
+const pref = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
+const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+let sttChoice = pref("hazelStt", "reson8");        // "reson8" or "browser"
+let wakeOn = pref("hazelWake", "off") === "on";     // demo default: off, every finished turn goes to Hazel
+function heard(text, final) { if ($("heard")) $("heard").textContent = text ? (final ? "Heard: " : "Hearing: ") + text : ""; }
+function meter(rms) { if ($("micLevel")) $("micLevel").style.width = Math.min(100, Math.round(rms * 400)) + "%"; }
 
 // The clock pauses while the barber talks with Hazel, so the story doesn't run away mid-conversation.
 function setHold(on) {
@@ -99,6 +105,10 @@ setInterval(() => {
 // Wake word ("hey hazel", configurable with WAKE_WORDS); text after it is the command.
 function findWake(text) {
   const norm = " " + text.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim() + " ";
+  // "hazel" anywhere in the first 3 words also counts (hazle, hasel, hazel's...)
+  const first = norm.trim().split(" ").slice(0, 3);
+  const hz = first.findIndex((w) => /^(ha[sz]e?l|hazle)$/.test(w));
+  if (hz >= 0) return norm.trim().split(" ").slice(hz + 1).join(" ");
   const words = ((S && S.wakeWords) || ["hey hazel", "hazel", "hey q"]).slice().sort((x, y) => y.length - x.length);
   for (const w of words) {
     const i = norm.indexOf(" " + w + " ");
@@ -112,7 +122,7 @@ async function handleUtterance(text, typed) {
   if (!text || thinking) return;
   const cmd = findWake(text);
   const awake = Date.now() < awakeUntil;
-  if (cmd === null && !awake && !typed) { $("interim").textContent = `(heard "${text}": say "Hey Hazel" first)`; return; }
+  if (cmd === null && !awake && !typed && wakeOn) { $("interim").textContent = `(heard "${text}": say "Hey Hazel" first)`; return; }
   setHold(true);
   if (S && !S.dayStarted) { // first wake: Hazel greets with today's outlook
     thinking = true; vctl();
@@ -120,7 +130,8 @@ async function handleUtterance(text, typed) {
     awakeUntil = Date.now() + 15000;
     return;
   }
-  const command = cmd === null ? text : cmd;
+  const command = (cmd === null ? text : cmd).trim();
+  heard(text, true);
   if (command.length < 2) { say(`Yes, ${S.barberName}?`); awakeUntil = Date.now() + 9000; return; }
   sendVoice(command);
 }
@@ -159,7 +170,7 @@ async function toggleMic() {
   if (listening) return stopMic();
   listening = true; vctl();
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {} // unlock audio on this click
-  if (S.reson8 && await startReson8()) return;
+  if (sttChoice === "reson8" && S.reson8 && await startReson8()) return;
   if (startWebSpeech()) return;
   listening = false; sttMode = "typed only"; vctl();
   $("typed").focus();
@@ -184,7 +195,10 @@ async function startReson8() {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
   } catch { return false; }
   audioCtx = new AudioContext({ sampleRate: 16000 });
+  try { await audioCtx.resume(); } catch {} // created after the permission prompt, so it may start suspended
   const ratio = audioCtx.sampleRate / 16000;
+  let gotText = false, speechSince = 0;
+  console.log("[stt] Reson8: AudioContext", audioCtx.sampleRate, "Hz, state", audioCtx.state, "-> sending 16 kHz PCM16 LE");
   const sock = new WebSocket(`ws://${location.host}/stt`);
   sock.binaryType = "arraybuffer";
   const ok = await new Promise(res => { sock.onopen = () => res(true); sock.onclose = () => res(false); setTimeout(() => res(sock.readyState === 1), 4000); });
@@ -193,6 +207,8 @@ async function startReson8() {
   sttMode = "Reson8 live turns";
   sock.onmessage = (e) => {
     let m; try { m = JSON.parse(e.data); } catch { return; }
+    gotText = true;
+    if (m.text) heard(m.text, m.type === "turn_end_candidate");
     if (m.type === "turn_start" && !thinking) $("interim").textContent = "…";
     if (m.type === "turn_end_candidate") { lastCandidate = m.text; if (!thinking) $("interim").textContent = m.text; }
     if (m.type === "turn_end") { const t = lastCandidate; lastCandidate = ""; if (!speaking) handleUtterance(t); }
@@ -211,6 +227,16 @@ async function startReson8() {
     const n = Math.floor(f.length / ratio), out = new Int16Array(n);
     for (let i = 0; i < n; i++) { const x = speaking ? 0 : f[Math.floor(i * ratio)]; out[i] = Math.max(-1, Math.min(1, x)) * 0x7fff; }
     ws.send(out.buffer);
+    let sum = 0; for (let i = 0; i < f.length; i++) sum += f[i] * f[i];
+    const rms = Math.sqrt(sum / f.length); meter(rms);
+    // Reson8 heard speech-level audio for 6 s but returned nothing: switch to the browser recogniser.
+    if (rms > 0.02 && !speechSince) speechSince = performance.now();
+    if (!gotText && speechSince && performance.now() - speechSince > 6000) {
+      console.log("[stt] Reson8 gave no text after 6 s of speech, falling back to browser speech");
+      const w = ws; ws = null; try { w.close(); } catch {} stopMicAudio();
+      if (startWebSpeech()) sttMode = "browser (Reson8 gave no text)"; else { listening = false; sttMode = "typed only"; }
+      vctl();
+    }
   };
   src.connect(proc); proc.connect(audioCtx.destination);
   vctl();
@@ -225,6 +251,7 @@ function startWebSpeech() {
   rec.onresult = (e) => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
+      heard(t, e.results[i].isFinal);
       if (e.results[i].isFinal) handleUtterance(t); else if (!thinking) $("interim").textContent = t;
     }
   };

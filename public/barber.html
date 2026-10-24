@@ -52,6 +52,9 @@
   .day b { color:var(--text); font:700 18px ui-monospace, monospace; display:block; }
   .hidden { display:none !important; }
   @media (max-width: 860px) { main { grid-template-columns:1fr; } .side { min-height:50vh; } }
+  .stt-debug { display:flex; gap:8px; align-items:center; color:var(--mut); font-size:13px; min-height:20px; }
+  .mic-meter { width:80px; height:6px; border-radius:3px; background:#ffffff1a; overflow:hidden; }
+  .mic-meter i { display:block; height:100%; width:0; background:#2fbf71; transition:width .1s; }
 </style>
 </head>
 <body>
@@ -71,13 +74,15 @@
       <button class="orb" id="micBtn" onclick="startOrMic()" title="Tap to talk"><span class="icon" id="orbIcon">🎙</span></button>
     </div>
     <div id="micState">Tap Start day.</div>
+    <div class="stt-debug"><div class="mic-meter"><i id="micLevel"></i></div><span id="heard"></span></div>
     <div id="interim" class="interim"></div>
     <div class="ctl">
       <button id="startBtn" class="primary" onclick="startDay()">🎙 Start listening</button>
       <button id="muteBtn" onclick="muted=!muted; if(muted) speechSynthesis.cancel(); vctl()">🔊 Voice on</button>
       <span class="tok">Closing</span> <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})">
     </div>
-    <div class="ctl"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select> <span class="tok" id="sttLabel"></span> <span class="tok" id="latency"></span></div>
+    <div class="ctl"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select> <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>
+          <label><input type="checkbox" id="wakeToggle" onchange="wakeOn=this.checked; setPref('hazelWake', this.checked ? 'on' : 'off')"> Wake word</label> <span class="tok" id="sttLabel"></span> <span class="tok" id="latency"></span></div>
     <div class="day" id="day"></div>
   </div>
   <div class="side">
@@ -105,6 +110,7 @@ function startDay() {
 function startOrMic() { toggleMic(); }
 </script>
 <script src="/voice.js"></script>
+<script>$("sttPick").value = sttChoice; $("wakeToggle").checked = wakeOn;</script>
 <script>
 function render() {
   if (!S) return;
