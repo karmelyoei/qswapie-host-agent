@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QSwapie Host Agent</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --card:#21252e; --line:#2c313c; --text:#e8eaf0; --mut:#9aa3b2; --acc:#7c5cff; --ok:#2fbf71; --warn:#f5a524; --bad:#ef5b5b; --ai:#38bdf8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0 8px 0 0; }
+  header h1 span { color:var(--acc); }
+  .clock { font:600 20px ui-monospace, monospace; }
+  .pill { padding:3px 10px; border-radius:99px; font-size:12px; font-weight:600; }
+  .pill.ai { background:#0c3a52; color:var(--ai); }
+  .pill.off { background:#4a2a0a; color:var(--warn); }
+  button { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; font:inherit; }
+  button:hover { border-color:var(--acc); }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; }
+  button.on { border-color:var(--acc); color:var(--acc); }
+  .spacer { flex:1; }
+  .tok { color:var(--mut); font-size:12px; }
+  main { display:grid; grid-template-columns: 1.1fr 0.9fr 1.3fr; gap:12px; padding:12px; height:calc(100vh - 58px); }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; overflow:auto; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--mut); margin:0 0 10px; display:flex; justify-content:space-between; align-items:center; }
+  .gcard { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px 10px; margin-bottom:6px; cursor:pointer; display:grid; grid-template-columns:34px 1fr auto; gap:8px; align-items:center; }
+  .gcard.sel { border-color:var(--acc); }
+  .gcard .pos { font:700 16px ui-monospace, monospace; color:var(--mut); text-align:center; }
+  .gcard .name { font-weight:600; }
+  .gcard .sub { color:var(--mut); font-size:12px; }
+  .wait { font:600 13px ui-monospace, monospace; text-align:right; }
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; margin-left:4px; background:#2b2f3a; color:var(--mut); }
+  .tag.hurry { background:#4a1d1d; color:#ff9b9b; }
+  .tag.swap { background:#1f3b2c; color:#7fe0a8; }
+  .tag.called { background:#4a3a0a; color:var(--warn); }
+  .tag.serving { background:#1f3b2c; color:var(--ok); }
+  .tag.noshow { background:#3a1f1f; color:var(--bad); }
+  .tag.back { background:#0c3a52; color:var(--ai); }
+  .phone { width:100%; max-width:320px; margin:0 auto; background:#0b0d11; border:8px solid #2a2e38; border-radius:30px; padding:14px 12px; min-height:520px; display:flex; flex-direction:column; }
+  .phone .top { text-align:center; padding-bottom:10px; border-bottom:1px solid var(--line); }
+  .phone .big { font:700 36px ui-monospace, monospace; }
+  .phone .range { color:var(--mut); }
+  .msgs { flex:1; overflow:auto; padding:10px 0; display:flex; flex-direction:column; gap:6px; }
+  .msg { background:var(--card); padding:7px 10px; border-radius:12px 12px 12px 4px; max-width:92%; font-size:13px; }
+  .msg.agent { background:#2a2350; border:1px solid #4a3d99; }
+  .msg .meta { font-size:10px; color:var(--mut); }
+  .phone .acts { display:flex; gap:6px; }
+  .phone .acts button { flex:1; font-size:12px; }
+  .stats { display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px; }
+  .stat { background:var(--card); border-radius:8px; padding:6px 8px; }
+  .stat b { display:block; font:700 18px ui-monospace, monospace; }
+  .stat span { font-size:11px; color:var(--mut); }
+  .alert { background:#2d2410; border:1px solid #6b5313; border-radius:10px; padding:8px 10px; margin-bottom:6px; }
+  .alert.done { opacity:.5; background:var(--card); border-color:var(--line); }
+  .alert .why { color:var(--mut); font-size:12px; }
+  .alert .row { display:flex; gap:6px; margin-top:6px; }
+  .feed .item { border-left:3px solid var(--line); padding:4px 8px; margin-bottom:6px; }
+  .feed .item.AI { border-color:var(--ai); }
+  .feed .item.offline { border-color:var(--warn); }
+  .feed .item .h { font-size:11px; color:var(--mut); }
+  .feed .item .h b { color:var(--text); }
+  .feed .item .r { font-size:12px; color:var(--mut); font-style:italic; }
+  .summary { background:#1a2b22; border:1px solid #2f6b4a; border-radius:10px; padding:10px; white-space:pre-wrap; margin-bottom:10px; }
+  .owner-ctl { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; align-items:center; }
+  @media (max-width: 1000px) { main { grid-template-columns:1fr; height:auto; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>QSwapie</span> Host Agent</h1>
+  <div class="clock" id="clock">--:--</div>
+  <div id="mode" class="pill">...</div>
+  <button class="primary" onclick="act({type:'rush'})">Simulate rush</button>
+  <span class="tok">Speed</span>
+  <span id="speeds"></span>
+  <button id="pauseBtn" onclick="act({type:'pause'})">Pause</button>
+  <div class="spacer"></div>
+  <span class="tok" id="tok"></span>
+  <button onclick="act({type:'close'})">End of day</button>
+  <button onclick="if(confirm('Reset the demo?')) act({type:'reset'})">Reset</button>
+</header>
+<main>
+  <section>
+    <h2>Live queue <span id="qcount"></span></h2>
+    <div id="queue"></div>
+  </section>
+  <section>
+    <h2>Guest phone <span id="phoneName"></span></h2>
+    <div id="phone"></div>
+  </section>
+  <section>
+    <h2>Owner view</h2>
+    <div class="owner-ctl">
+      <span class="tok">Staff</span> <button onclick="act({type:'staff',delta:-1})">-</button> <b id="staff"></b> <button onclick="act({type:'staff',delta:1})">+</button>
+      <button id="joinsBtn" onclick="act({type:'joins'})">Pause joins</button>
+      <button onclick="act({type:'join'})">+ Walk-in</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div id="summary"></div>
+    <div id="alerts"></div>
+    <h2 style="margin-top:12px">Agent activity</h2>
+    <div class="feed" id="feed"></div>
+  </section>
+</main>
+<script>
+let S = null, sel = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+async function act(body) {
+  await fetch("/api/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  poll();
+}
+
+const STATUS = { waiting: "", called: "called", serving: "in chair", done: "done", noshow: "no-show" };
+
+function guestCard(g) {
+  const pos = g.status === "waiting" ? g.place : g.status === "serving" ? "✂" : g.status === "called" ? "!" : "·";
+  let tags = "";
+  if (g.status !== "waiting") tags += `<span class="tag ${g.status}">${STATUS[g.status]}${g.status === "called" ? " " + g.calledMinAgo + "m ago" : ""}</span>`;
+  if (g.hurry) tags += `<span class="tag hurry">hurry</span>`;
+  if (g.swapOk) tags += `<span class="tag swap">swap ok</span>`;
+  if (g.headedBack) tags += `<span class="tag back">heading back</span>`;
+  const where = g.away ? (g.headedBack ? "walking back" : `away, ${g.walk} min walk`) : "in the shop";
+  const wait = g.status === "waiting" && g.wait ? `${g.wait[0]}–${g.wait[1]} min` : "";
+  return `<div class="gcard ${sel === g.id ? "sel" : ""}" onclick="sel='${g.id}';render()">
+    <div class="pos">${pos}</div>
+    <div><div class="name">${esc(g.name)} ${tags}</div><div class="sub">${where} · ${g.messages.filter(m => m.from === "agent").length} agent msgs</div></div>
+    <div class="wait">${wait}</div></div>`;
+}
+
+function render() {
+  if (!S) return;
+  $("clock").textContent = S.now;
+  const a = S.agent;
+  $("mode").className = "pill " + (a.mode === "AI" ? "ai" : "off");
+  $("mode").textContent = a.mode === "AI" ? `● Claude live${a.busy ? " · thinking…" : ""}` : `● Offline rules${a.offlineReason ? " · " + a.offlineReason : ""}`;
+  $("tok").textContent = `${a.model} · ${a.calls}/${a.maxCalls} calls · ${(a.inTok / 1000).toFixed(1)}k in / ${(a.outTok / 1000).toFixed(1)}k out tokens`;
+  $("speeds").innerHTML = [0.5, 1, 2, 4].map(v => `<button class="${S.speed === v ? "on" : ""}" onclick="act({type:'speed',value:${v}})">${v}x</button>`).join(" ");
+  $("pauseBtn").textContent = S.running ? "Pause" : "Resume";
+  $("staff").textContent = S.staff;
+  $("joinsBtn").textContent = S.joinsPaused ? "Open joins" : "Pause joins";
+  $("joinsBtn").className = S.joinsPaused ? "on" : "";
+
+  const order = { serving: 0, called: 1, waiting: 2, noshow: 3, done: 4 };
+  const gs = [...S.guests].sort((x, y) => order[x.status] - order[y.status] || (x.place - y.place));
+  $("qcount").textContent = `${S.stats.waiting} waiting · ~${S.stats.backlog} min deep`;
+  $("queue").innerHTML = gs.map(guestCard).join("");
+
+  if (!sel || !S.guests.find(g => g.id === sel)) sel = (S.guests.find(g => g.hurry && g.status === "waiting") || S.guests.find(g => g.status === "waiting") || {}).id;
+  const g = S.guests.find(x => x.id === sel);
+  $("phoneName").textContent = g ? g.name : "";
+  if (g) {
+    const big = g.status === "waiting" ? `#${g.place}` : STATUS[g.status];
+    const range = g.status === "waiting" && g.wait ? `about ${g.wait[0]} to ${g.wait[1]} min` : g.status === "called" ? "It's your turn" : "";
+    const msgs = g.messages.slice().reverse().map(m => `<div class="msg ${m.from}"><div class="meta">${m.t} · ${m.from === "agent" ? "QSwapie host (AI)" : "QSwapie"}</div>${esc(m.text)}</div>`).join("");
+    $("phone").innerHTML = `<div class="phone"><div class="top"><div class="tok">Kiez Cuts · your place</div><div class="big">${big}</div><div class="range">${range}</div></div>
+      <div class="msgs">${msgs}</div>
+      ${g.status === "waiting" ? `<div class="acts"><button onclick="act({type:'hurry',id:'${g.id}'})" ${g.hurry ? "disabled" : ""}>I'm in a hurry</button><button onclick="act({type:'swapok',id:'${g.id}'})" ${g.swapOk ? "disabled" : ""}>Happy to swap</button></div>` : ""}
+    </div>`;
+  } else $("phone").innerHTML = `<p class="tok">Click a guest to see their phone.</p>`;
+
+  const st = S.stats;
+  $("stats").innerHTML = [["served", st.served], ["waiting", st.waiting], ["avg wait", st.avgWait + "m"], ["no-shows", st.noShows], ["swaps", st.swaps], ["agent msgs", st.messages], ["idle chair", st.idleChairMin + "m"], ["in chair", st.inChair]]
+    .map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join("");
+  $("summary").innerHTML = S.summary ? `<div class="summary"><b>End of day</b>\n${esc(S.summary)}</div>` : "";
+  $("alerts").innerHTML = S.alerts.map(al => `<div class="alert ${al.status !== "open" ? "done" : ""}"><div><b>⚑ ${esc(al.text)}</b></div><div class="why">${al.t} · ${esc(al.reason)}</div>
+    ${al.status === "open" ? `<div class="row">${al.action !== "none" ? `<button class="primary" onclick="act({type:'alert',id:${al.id},apply:true})">${al.action.replace("_", " ")}</button>` : ""}<button onclick="act({type:'alert',id:${al.id},apply:false})">${al.action !== "none" ? "Dismiss" : "OK"}</button></div>` : `<div class="why">${al.status}</div>`}</div>`).join("");
+  $("feed").innerHTML = S.activity.map(x => `<div class="item ${x.mode}"><div class="h">${x.t} · <b>${x.mode === "AI" ? "Claude" : x.mode === "offline" ? "Offline rules" : "Sim"}</b> · ${esc(x.tool)}</div><div>${esc(x.text)}</div>${x.reason ? `<div class="r">Why: ${esc(x.reason)}</div>` : ""}</div>`).join("") || `<p class="tok">The agent is watching. Click "Simulate rush".</p>`;
+}
+
+async function poll() {
+  try { S = await (await fetch("/api/state")).json(); render(); } catch {}
+}
+setInterval(poll, 600);
+poll();
+</script>
+</body>
+</html>
