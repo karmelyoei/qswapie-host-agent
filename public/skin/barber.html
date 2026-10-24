@@ -123,6 +123,7 @@ async function act(body) {
 // Start day: unlock audio on this click, ask Hazel for the greeting, then open the mic.
 // Arm the mic once (browsers need a tap); after that the barber just says "Hey Hazel".
 function startDay() {
+  claimHazel();
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
   if (!listening) toggleMic();
 }
@@ -133,6 +134,7 @@ async function beginHazel() {
   try { getPlayCtx(); } catch {}
   try { const ctx = new AudioContext(); await ctx.resume(); const g = ctx.createGain(); g.gain.value = 0; const osc = ctx.createOscillator(); osc.connect(g).connect(ctx.destination); osc.start(); osc.stop(ctx.currentTime + 0.05); } catch {}
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
+  claimHazel();
   stopAllSpeech();
   await act({ type: "reset", scenario: "barber" });
   o.classList.add("gone");

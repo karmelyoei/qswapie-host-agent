@@ -29,7 +29,7 @@ function renderVoice() {
     if (v.who !== "agent") continue;
     if (!v.proactive && streamedReplies > 0) { streamedReplies--; continue; }
     setHold(true); // the clock waits while Hazel announces something
-    speak(v.text);
+    say(v.text, "msg" + v.id);
     awakeUntil = Date.now() + 9000; // proactive news: give the barber a moment to answer without the wake word
   }
   const html = S.voice.map(v => `<div class="vb ${v.who} transcript-item ${v.who === "barber" ? "barber" : "fade"}"><div class="meta speaker">${v.who === "barber" ? esc(S.barberName) : "<b>H</b> Hazel (AI)" + (v.proactive ? " · proactive" : "")} <time>${v.t}</time></div><p>${esc(v.text)}</p></div>`).join("");
@@ -80,7 +80,7 @@ function getPlayCtx() {
   if (playCtx.state === "suspended") playCtx.resume().catch(() => {});
   return playCtx;
 }
-function useOpenAI() { return !!(S && S.tts && S.tts.openai) && Date.now() > ttsDownUntil; }
+function useOpenAI() { return !!(S && S.tts && S.tts.openai); }
 async function fetchTts(text) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), 8000); // event Wi-Fi is slow: allow 8 s per sentence
@@ -91,8 +91,13 @@ async function fetchTts(text) {
     return await getPlayCtx().decodeAudioData(bytes);
   } finally { clearTimeout(to); }
 }
-function say(text) {
-  if (muted) return;
+const spokenIds = new Set();
+let silencedByOtherTab = false;
+function say(text, id = "local") {
+  if (muted || silencedByOtherTab || !text) return;
+  if (id !== "local" && id !== "stream") { if (spokenIds.has(id)) return; spokenIds.add(id); }
+  if (!S) { setTimeout(() => say(text, id), 300); return; } // engine not known yet: wait, never guess
+  audioLog(`[speak] id=${id} engine=${useOpenAI() ? "openai" : "browser"}`, text);
   hazelSaying = (hazelSaying + " " + text).slice(-400);
   setTimeout(() => { hazelSaying = ""; }, 15000);
   const parts = (text.match(/[^.!?]+[.!?]*/g) || [text]).map(x => x.trim()).filter(Boolean);
@@ -109,6 +114,7 @@ function say(text) {
 function browserLine(text) { // one utterance as a promise: the fallback for a single sentence
   return new Promise((res) => {
     if (!window.speechSynthesis) return res();
+    try { speechSynthesis.cancel(); } catch {}
     const u = new SpeechSynthesisUtterance(text); const v = chosenVoice();
     if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-US";
     let done = false; const fin = () => { if (!done) { done = true; res(); } };
@@ -131,6 +137,7 @@ async function playNext() {
   }
   try {
     const ctx = getPlayCtx();
+    try { speechSynthesis.cancel(); } catch {}
     const src = ctx.createBufferSource(); src.buffer = item.buf; src.connect(ctx.destination);
     currentSrc = src;
     src.onended = () => { if (currentSrc === src) done("ended"); };
@@ -153,7 +160,7 @@ function stopAllSpeech(reason = "restart") {
   vctl();
 }
 function sayBrowser(text) {
-  if (muted || !window.speechSynthesis) return;
+  if (muted || silencedByOtherTab || !window.speechSynthesis || useOpenAI()) return;
   const v = chosenVoice();
   // Sentence by sentence sounds less robotic than one long utterance.
   const parts = text.match(/[^.!?]+[.!?]*/g) || [text];
@@ -175,6 +182,7 @@ function sayBrowser(text) {
   }
 }
 function speak(text) { say(text); }
+
 
 const FILLERS = ["Hmm, let me check the chairs...", "One sec...", "Checking the book..."];
 let streamedReplies = 0, awakeUntil = 0, holding = false, streamCtrl = null;
@@ -257,7 +265,7 @@ async function sendVoice(text) {
     const m = final ? [buf, buf] : buf.match(/^(.*?[.!?])(\s|$)/s);
     if (!m || !m[1].trim()) return;
     if (!firstSpoken) { firstSpoken = performance.now() - t0; if ($("latency")) $("latency").textContent = (firstSpoken / 1000).toFixed(1) + " s"; }
-    say(m[1].trim()); buf = buf.slice(m[0].length);
+    say(m[1].trim(), "stream"); buf = buf.slice(m[0].length);
     if (!final) speakReady(false);
   };
   const filler = setTimeout(() => { if (!firstSpoken) say(FILLERS[Math.floor(Math.random() * FILLERS.length)]); }, 1500);
@@ -397,3 +405,26 @@ function startWebSpeech() {
 function pauseRec() { if (DUPLEX) return; try { rec && rec.abort(); } catch {} }
 function resumeRec() { if (listening && rec) try { rec.start(); } catch {} }
 
+
+// One voice in the room: the newest tapped /barber tab claims Hazel; older tabs go silent and stop listening.
+const tabId = Math.random().toString(36).slice(2);
+let hazelChannel = null;
+try { hazelChannel = new BroadcastChannel("hazel-voice"); } catch {}
+function claimHazel() {
+  silencedByOtherTab = false;
+  const b = document.getElementById("otherTabBanner"); if (b) b.remove();
+  try { hazelChannel && hazelChannel.postMessage({ type: "claim", tabId }); } catch {}
+}
+if (hazelChannel) hazelChannel.onmessage = (e) => {
+  if (!e.data || e.data.type !== "claim" || e.data.tabId === tabId) return;
+  silencedByOtherTab = true;
+  stopAllSpeech("other tab");
+  if (listening) stopMic();
+  if (!document.getElementById("otherTabBanner")) {
+    const b = document.createElement("div"); b.id = "otherTabBanner";
+    b.textContent = "Hazel is speaking in another tab. Tap here to bring her back to this one.";
+    b.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:300;padding:12px;text-align:center;background:#d9541e;color:#fff;font:600 15px system-ui;cursor:pointer";
+    b.onclick = () => { claimHazel(); if (!listening) toggleMic(); };
+    document.body.appendChild(b);
+  }
+};

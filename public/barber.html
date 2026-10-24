@@ -105,6 +105,7 @@ async function act(body) {
 // Start day: unlock audio on this click, ask Hazel for the greeting, then open the mic.
 // Arm the mic once (browsers need a tap); after that the barber just says "Hey Hazel".
 function startDay() {
+  claimHazel();
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
   if (!listening) toggleMic();
 }
