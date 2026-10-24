@@ -354,7 +354,7 @@ export class Agent {
     const num = Number((/(\d+)\s*more/.exec(t) ?? /\b(one|two|three|four|five)\s+more/.exec(t))?.[1]
       ?.replace("one", "1").replace("two", "2").replace("three", "3").replace("four", "4").replace("five", "5"));
     if (/\b(close|stop|shut)\b/.test(t) && !/should we|or do we/.test(t)) { this.execVoice("close_queue", { reason: "barber said close" }); return `Done, queue's closed. Everyone already in line still gets their cut, nobody leaves looking half finished.`; }
-    if (/\bopen\b/.test(t)) { this.execVoice("open_queue", { reason: "barber said open" }); return `${/morning|afternoon|day/.test(t) ? "Beautiful one indeed, ${sim.barberName}! " : ""}Queue's open, let's make some heads look expensive.`; }
+    if (/\bopen\b/.test(t)) { this.execVoice("open_queue", { reason: "barber said open" }); return `${/morning|afternoon|day/.test(t) ? `Beautiful one indeed, ${sim.barberName}! ` : ""}Queue's open, let's make some heads look expensive.`; }
     if (/power|capacity|more|should we close/.test(t)) {
       const c = sim.capacity(num || 2);
       return c.fits

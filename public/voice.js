@@ -21,7 +21,7 @@ function renderVoice() {
   const maxId = S.voice.length ? S.voice[S.voice.length - 1].id : 0;
   if (lastSpoken === null || maxId < lastSpoken) lastSpoken = maxId; // page load or reset: don't replay history
   for (const v of S.voice) if (v.id > lastSpoken) { lastSpoken = v.id; if (v.who === "agent") speak(v.text); }
-  const html = S.voice.map(v => `<div class="vb ${v.who}"><div class="meta">${v.t} · ${v.who === "barber" ? esc(S.barberName) : "Fade (AI)" + (v.proactive ? " · between cuts" : "")}</div>${esc(v.text)}</div>`).join("");
+  const html = S.voice.map(v => `<div class="vb ${v.who}"><div class="meta">${v.t} · ${v.who === "barber" ? esc(S.barberName) : "Fade (AI)" + (v.proactive ? " · proactive" : "")}</div>${esc(v.text)}</div>`).join("");
   const log = $("voiceLog");
   if (log.dataset.h !== html) {
     log.innerHTML = html || `<p class="tok">Try: "Beautiful morning! Let's optimise today, open the queue."</p>`;

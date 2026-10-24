@@ -6,7 +6,11 @@ Walk-in waiting is dead time: guests stand around or walk away, and chairs sit i
 
 Built at **Agentic AI Hack by Jamie** ({Tech: Europe}, Berlin, 2026-10-24), Open Agentic Track. Partner tech: **Anthropic** (Claude Sonnet 5.5, tool use) and **Reson8** (Turns speech-to-text).
 
-> Screenshots: `docs/screenshots/` *(placeholder: queue page, barber page)*
+| Barber voice page (`/barber`) | Queue agent page (`/`) |
+|---|---|
+| ![Fade, the barber voice sidekick, talking with Nico](docs/img/barber-page.jpg) | ![Live queue, guest phone and agent activity feed](docs/img/queue-page.jpg) |
+
+*Screenshots in offline mode (no API keys), same live simulation on both pages.*
 
 ## What it does
 
