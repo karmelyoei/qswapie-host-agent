@@ -75,6 +75,8 @@ async function fetchTts(text) {
 }
 function say(text) {
   if (muted) return;
+  hazelSaying = (hazelSaying + " " + text).slice(-400);
+  setTimeout(() => { hazelSaying = ""; }, 15000);
   const parts = (text.match(/[^.!?]+[.!?]*/g) || [text]).map(x => x.trim()).filter(Boolean);
   if (!useOpenAI()) { voiceSource = "browser"; return sayBrowser(text); }
   voiceSource = "OpenAI";
@@ -145,6 +147,23 @@ function speak(text) { say(text); }
 
 const FILLERS = ["Hmm, let me check the chairs...", "One sec...", "Checking the book..."];
 let streamedReplies = 0, awakeUntil = 0, holding = false, streamCtrl = null;
+const DUPLEX = new URLSearchParams(location.search).get("duplex") === "1";
+let hazelSaying = "", loudSince = 0, echoFloor = 0.01;
+// Barge-in: Nico starts talking while Hazel speaks, so stop her right away and listen.
+function bargeIn(why) {
+  if (!speaking && !audioPlaying) return;
+  console.log("[duplex] barge-in:", why);
+  audioQ = []; try { currentAudio && currentAudio.pause(); } catch {} currentAudio = null; audioPlaying = false;
+  try { speechSynthesis.cancel(); } catch {}
+  speaking = false; vctl();
+}
+// Echo guard: drop a "turn" that is mostly Hazel's own words coming back through the speakers.
+function isEcho(text) {
+  if (!hazelSaying) return false;
+  const a = text.toLowerCase().match(/[a-z']+/g) || [], b = new Set(hazelSaying.toLowerCase().match(/[a-z']+/g) || []);
+  if (a.length < 2) return false;
+  return a.filter((w) => b.has(w)).length / a.length > 0.6;
+}
 const pref = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 let sttChoice = pref("hazelStt", "reson8");        // "reson8" or "browser"
@@ -182,6 +201,7 @@ function findWake(text) {
 async function handleUtterance(text, typed) {
   text = (text || "").trim();
   if (!text || thinking) return;
+  if (DUPLEX && !typed && isEcho(text)) { console.log("[duplex] echo dropped:", text); return; }
   const cmd = findWake(text);
   const awake = Date.now() < awakeUntil;
   if (cmd === null && !awake && !typed && wakeOn) { $("interim").textContent = `(heard "${text}": say "Hey Hazel" first)`; return; }
@@ -252,7 +272,7 @@ function stopMicAudio() {
 // Reson8 Turns via our server's /stt proxy: 16 kHz mono PCM16 up, turn events down.
 async function startReson8() {
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
   } catch { return false; }
   audioCtx = new AudioContext({ sampleRate: 16000 });
   try { await audioCtx.resume(); } catch {} // created after the permission prompt, so it may start suspended
@@ -271,7 +291,8 @@ async function startReson8() {
     if (m.text) heard(m.text, m.type === "turn_end_candidate");
     if (m.type === "turn_start" && !thinking) $("interim").textContent = "…";
     if (m.type === "turn_end_candidate") { lastCandidate = m.text; if (!thinking) $("interim").textContent = m.text; }
-    if (m.type === "turn_end") { const t = lastCandidate; lastCandidate = ""; if (!speaking) handleUtterance(t); }
+    if (m.type === "turn_end_candidate" && DUPLEX && speaking && m.text && !isEcho(m.text)) bargeIn("Reson8 heard: " + m.text);
+    if (m.type === "turn_end") { const t = lastCandidate; lastCandidate = ""; if (!speaking || DUPLEX) handleUtterance(t); }
   };
   sock.onclose = () => { // Reson8 dropped: fall back to the browser recogniser
     if (ws !== sock || !listening) return;
@@ -287,12 +308,20 @@ async function startReson8() {
     const n = Math.floor(f.length / ratio), out = new Int16Array(n);
     for (let i = 0; i < n; i++) {
       let x = 0;
-      if (!speaking) { const a = Math.floor(i * ratio), b = Math.max(a + 1, Math.floor((i + 1) * ratio)); for (let j = a; j < b; j++) x += f[j]; x /= (b - a); }
+      if (!speaking || DUPLEX) { const a = Math.floor(i * ratio), b = Math.max(a + 1, Math.floor((i + 1) * ratio)); for (let j = a; j < b; j++) x += f[j]; x /= (b - a); }
       out[i] = Math.max(-1, Math.min(1, x)) * 0x7fff;
     }
     ws.send(out.buffer);
     let sum = 0; for (let i = 0; i < f.length; i++) sum += f[i] * f[i];
     const rms = Math.sqrt(sum / f.length); meter(rms);
+    if (DUPLEX) {
+      // Voice activity above the echo floor for ~300 ms while Hazel speaks = barge-in.
+      if (!speaking) echoFloor = echoFloor * 0.95 + rms * 0.05;
+      const loud = speaking && rms > Math.max(0.04, echoFloor * 3);
+      if (loud && !loudSince) loudSince = performance.now();
+      if (!loud) loudSince = 0;
+      if (loudSince && performance.now() - loudSince > 300) { loudSince = 0; bargeIn("mic level"); }
+    }
     // Reson8 heard speech-level audio for 6 s but returned nothing: switch to the browser recogniser.
     if (rms > 0.02 && !speechSince) speechSince = performance.now();
     if (!gotText && speechSince && performance.now() - speechSince > 6000) {
@@ -316,10 +345,11 @@ function startWebSpeech() {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
       heard(t, e.results[i].isFinal);
+      if (DUPLEX && speaking && t.trim().split(/\s+/).length >= 2 && !isEcho(t)) bargeIn("browser heard: " + t);
       if (e.results[i].isFinal) handleUtterance(t); else if (!thinking) $("interim").textContent = t;
     }
   };
-  rec.onend = () => { if (listening && rec && !speaking) try { rec.start(); } catch {} };
+  rec.onend = () => { if (listening && rec && (!speaking || DUPLEX)) try { rec.start(); } catch {} };
   rec.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") {
       const r = rec; rec = null; listening = false; sttMode = "typed only (no mic)"; try { r.abort(); } catch {}
@@ -331,6 +361,6 @@ function startWebSpeech() {
   vctl();
   return true;
 }
-function pauseRec() { try { rec && rec.abort(); } catch {} }
+function pauseRec() { if (DUPLEX) return; try { rec && rec.abort(); } catch {} }
 function resumeRec() { if (listening && rec) try { rec.start(); } catch {} }
 

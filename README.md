@@ -80,7 +80,7 @@ Keys are read only by the server and never sent to the browser or written to log
 The story is scripted and the same on every run. Put `/` (queue) and `/barber` (Hazel) side by side.
 
 **Part 1: Nico and Hazel (about 90 s), on `/barber`**
-1. Open `/barber` and **tap anywhere** on the "Tap anywhere to start Hazel" screen (browsers need one tap for the mic and audio). That tap restarts the story: it's 09:00, closing at 17:00, and the clock is paused. The queue page shows 15 clients for today (cuts of 15 to 40 minutes, done at 17:00): **Paul** in the chair, **Alex** waiting (skin fade, about 40 min), then **Tobi** (beard trim and line-up, about 30 min), and the rest booked later in the day, each with a service.
+1. Open `/barber` and **tap once** on the "Tap once to wake Hazel" screen (browsers need one tap for the mic and audio). That tap restarts the story: it's 09:00, closing at 17:00, and the clock is paused. The queue page shows 15 clients for today (cuts of 15 to 40 minutes, done at 17:00): **Paul** in the chair, **Alex** waiting (skin fade, about 40 min), then **Tobi** (beard trim and line-up, about 30 min), and the rest booked later in the day, each with a service.
 2. From now on Hazel is always listening, hands-free. The wake word is **off** by default, so just talk; the mic button only mutes listening.
 3. Nico: *"Morning Hazel, how's today looking?"* Hazel: *"Morning Nico! You've got 15 clients today, cuts between fifteen and forty minutes, so you'll be done around five. Two are waiting: Alex is next for a skin fade, then Tobi for a beard trim and line-up. Want me to add more clients, or finish at five?"*
 4. Nico: *"Five is good, finish at five. If someone cancels, let me know."* Hazel: *"Deal, closing the list at fifteen, done by five. I'll shout if anyone bails."* The queue stays closed and the clock starts (3 sim minutes per second, so Lina's cancellation comes about 30 s later). The waiting count changes only as the day plays out.
@@ -96,6 +96,8 @@ The clock pauses while Nico and Hazel talk, so the story never runs away mid-sen
 1. Point at the activity feed: every action has a *Why* and a *Claude* badge.
 2. Click Lina's card to see the whole cancel and rebook conversation on her phone.
 3. For the busy two-barber day, click **Reset** and then **Simulate rush**: head-back timing, no-shows, a hurry swap and the owner alert "pause new joins?". **End of day** writes a summary.
+
+Defaults: brain **Claude**, voice **OpenAI TTS** (when `OPENAI_API_KEY` is set), ears **Reson8** (when `RESON8_API_KEY` is set). Add `?debug=1` to show the brain selector, and `?duplex=1` for full duplex: the mic stays open while Hazel talks and Nico can interrupt her (barge-in by mic level above the echo floor or by Reson8 text; Hazel's own words coming back are dropped by an echo guard). Duplex is opt-in until tested on stage.
 
 Speed buttons (0.5x to 4x) control sim minutes per real second. Add `?voice=off` to the barber URL to keep Hazel silent, or `?skin=old` for the classic look. On the barber page, Space toggles the mic, and the typed box works without a wake word.
 

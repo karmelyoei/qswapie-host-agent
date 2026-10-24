@@ -12,8 +12,8 @@
 </head>
 <body class="voice-page">
   <!-- One tap anywhere: browsers need a gesture for the mic and audio. It also starts the story fresh. -->
-  <div id="startOverlay" class="start-overlay" onclick="beginHazel()" role="button" tabindex="0" aria-label="Tap anywhere to start Hazel">
-    <div><img src="/img/hazel.webp" alt="" width="220"><h2>Tap anywhere to start Hazel</h2><p>After that, just talk. Hazel is always listening.</p></div>
+  <div id="startOverlay" class="start-overlay" onclick="beginHazel()" role="button" tabindex="0" aria-label="Tap once to wake Hazel">
+    <div><img src="/img/hazel.webp" alt="" width="220"><h2>Tap once to wake Hazel</h2><p>After that, just talk. Hazel is always listening.</p></div>
   </div>
   <div class="voice-app">
     <header class="voice-header">
@@ -38,7 +38,7 @@
           <button id="muteBtn" type="button" onclick="muted=!muted; if(muted) stopAllSpeech(); vctl()">🔊 Voice on</button>
           <label>Voice <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select></label>
           <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>
-          <label>Brain <select id="brainPick" onchange="brainChoice=this.value; setPref('hazelBrain', this.value)"><option value="claude">Claude</option><option value="openai">OpenAI</option></select></label>
+          <label class="debug-only">Brain <select id="brainPick" onchange="brainChoice=this.value; setPref('hazelBrain', this.value)"><option value="claude">Claude</option><option value="openai">OpenAI</option></select></label>
           <label><input type="checkbox" id="wakeToggle" onchange="wakeOn=this.checked; setPref('hazelWake', this.checked ? 'on' : 'off')"> Wake word</label>
           <span class="tok" id="sttLabel"></span>
         </div>
@@ -147,6 +147,7 @@ document.addEventListener("keydown", (e) => {
 });
 </script>
 <script src="/voice.js"></script>
+<script>if (!/[?&]debug=1/.test(location.search)) document.querySelectorAll(".debug-only").forEach((el) => el.style.display = "none");</script>
 <script>$("sttPick").value = sttChoice; $("wakeToggle").checked = wakeOn; setTimeout(() => { $("brainPick").value = brainChoice || (S && S.brain && S.brain.default) || "claude"; }, 900);</script>
 <script>
 function render() {
