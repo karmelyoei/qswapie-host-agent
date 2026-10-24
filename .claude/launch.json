@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "host-agent", "runtimeExecutable": "node", "runtimeArgs": ["src/server.ts"], "port": 5173 }
+  ]
+}

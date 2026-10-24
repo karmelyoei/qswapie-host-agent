@@ -26,10 +26,10 @@
 
 ## How it uses Claude
 - Model: claude-sonnet-5-5 with tool use.
-- Tools: send guest message, propose swap, flag no-show, alert owner, and similar.
+- Tools: get_queue, predict_wait, message_guest, propose_swap, mark_no_show, alert_owner. Every action carries a reason.
 - Proactive trigger loop: runs on a timer and on queue events, no user prompt needed.
 - Compact state: send only a short queue snapshot, not the full history.
-- Token budget: [fill in max tokens and calls per tick]
+- Token budget: max 1200 output tokens per call, effort low, at most one Claude run per 5 seconds and only when something changed, hard cap 150 calls per run (counter on screen)
 - Fallback: rule based offline mode if the API fails, so the demo never stops.
 
 ## Built today vs existed before
@@ -60,4 +60,4 @@
 - Open http://localhost:5173
 - Click "Simulate rush", use the speed control.
 - Watch the activity feed on the right.
-- Needs an Anthropic API key in env, otherwise it runs in offline fallback mode: [check exact variable name]
+- Needs an Anthropic API key in env, otherwise it runs in offline fallback mode: ANTHROPIC_API_KEY (env or a local .env file)

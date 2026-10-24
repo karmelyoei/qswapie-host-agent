@@ -104,10 +104,18 @@ export class Agent {
         g.notified.push("_near"); sim.signal(`${g.name} is getting close to the front (wait ${g.wait?.join("-")} min, ${g.walk} min walk)`);
       }
     }
-    if (sim.backlog() >= 40 && !sim.joinsPaused && !sim.signals.some((s) => s.includes("backlog"))) {
-      const last = sim.alerts.find((a) => a.action === "pause_joins");
-      if (!last || sim.t - last.t >= 15) sim.signal(`backlog is ${sim.backlog()} min`);
-    }
+    const open = (action: string) => sim.alerts.some((a) => a.action === action && (a.status === "open" || sim.t - a.t < 15));
+    if (sim.backlog() >= 40 && !sim.joinsPaused && !open("pause_joins")) this.once("backlog", `backlog is ${sim.backlog()} min`);
+    if (sim.joinsPaused && sim.backlog() < 20 && !open("resume_joins")) this.once("resume", `joins are paused and backlog is down to ${sim.backlog()} min`);
+  }
+
+  // Raise a watchdog signal at most once per 10 sim minutes, so a "no action" answer does not trigger a new call every tick.
+  private cooldown = new Map<string, number>();
+  private once(key: string, text: string) {
+    const last = this.cooldown.get(key);
+    if (last !== undefined && this.sim.t - last < 10) return;
+    this.cooldown.set(key, this.sim.t);
+    this.sim.signal(text);
   }
 
   private exec(name: string, input: any, mode: "AI" | "offline"): string {
