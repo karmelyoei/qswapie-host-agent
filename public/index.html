@@ -85,6 +85,7 @@
   .typed input { flex:1; }
   @media (max-width: 1000px) { main { grid-template-columns:1fr; height:auto; } }
   #mascot { display:none; } /* shown by the stage skin */
+  .msg.guest { align-self:flex-end; background:#2f6b4a; color:#fff; border-radius:12px 12px 4px 12px; }
 </style>
 <script>
   // Stage skin (designed with Codex) is the default look; ?skin=old keeps the classic look.
@@ -194,7 +195,7 @@ function render() {
   if (g) {
     const HEAD = { left: ["Cancelled", "Hope to see you soon"], called: ["Your turn", "Please come to the counter"], serving: ["In the chair", "Enjoy your cut"], done: ["All done", "Thanks for visiting!"], noshow: ["Place released", "Scan the QR to rejoin"] };
     const [big, range] = g.status === "waiting" ? [`#${g.place}`, g.wait ? `about ${g.wait[0]} to ${g.wait[1]} min` : ""] : HEAD[g.status];
-    const msgs = g.messages.slice().reverse().map(m => `<div class="msg ${m.from} ${m.old ? "old" : ""}"><div class="meta">${m.t} · ${m.from === "agent" ? "QSwapie host (AI)" : "QSwapie"}${m.old ? " · earlier" : ""}</div>${esc(m.text)}</div>`).join("");
+    const msgs = g.messages.slice().reverse().map(m => `<div class="msg ${m.from} ${m.old ? "old" : ""}"><div class="meta">${m.t} · ${m.from === "agent" ? "QSwapie host (AI)" : m.from === "guest" ? esc(g.name) : "QSwapie"}${m.old ? " · earlier" : ""}</div>${esc(m.text)}</div>`).join("");
     $("phone").innerHTML = `<div class="phone"><div class="top"><div class="tok">Kiez Cuts · your place</div><div class="big">${big}</div><div class="range">${range}</div></div>
       <div class="msgs">${msgs}</div>
       ${g.status === "waiting" ? `<div class="acts"><button onclick="act({type:'hurry',id:'${g.id}'})" ${g.hurry ? "disabled" : ""}>I'm in a hurry</button><button onclick="act({type:'swapok',id:'${g.id}'})" ${g.swapOk ? "disabled" : ""}>Happy to swap</button></div>` : ""}

@@ -40,7 +40,7 @@ function state() {
     stats: sim.stats(),
     agent: agent.status(),
     line: sim.line,
-    guests: sim.guests.filter((g) => (g.status !== "done" && g.status !== "left") || sim.t - (g.endAt ?? 0) < 5).map((g) => ({
+    guests: sim.guests.filter((g) => g.status !== "done" || sim.t - (g.endAt ?? 0) < 5).map((g) => ({
       id: g.id, name: g.name, status: g.status, hurry: g.hurry, swapOk: g.swapOk, away: g.away, walk: g.walk,
       headedBack: g.headedBackAt !== undefined, wait: g.wait, quoted: g.quoted, place: sim.line.indexOf(g.id) + 1,
       calledMinAgo: g.calledAt !== undefined ? Math.round(sim.t - g.calledAt) : null,

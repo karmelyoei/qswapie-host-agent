@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fade · Barber Voice</title>
+<title>Hazel · Barber Voice</title>
 <style>
   :root { --bg:#07080c; --panel:#11131a; --card:#1a1d26; --line:#272b36; --text:#eef0f6; --mut:#8f98a8; --acc:#7c5cff; --ai:#38bdf8; --bad:#ef5b5b; --warn:#f5a524; --ok:#2fbf71; }
   * { box-sizing:border-box; }
@@ -57,7 +57,7 @@
 <body>
 <header>
   <span id="mascot" class="is-idle" data-state="idle" aria-hidden="true"></span>
-  <h1><span>QSwapie</span> · Fade, your barber sidekick</h1>
+  <h1><span>QSwapie</span> · Hazel, your barber sidekick</h1>
   <div class="clock" id="clock">--:--</div>
   <div id="mode" class="pill">...</div>
   <div class="spacer"></div>
@@ -73,18 +73,18 @@
     <div id="micState">Tap Start day.</div>
     <div id="interim" class="interim"></div>
     <div class="ctl">
-      <button id="startBtn" class="primary" onclick="startDay()">▶ Start day</button>
+      <button id="startBtn" class="primary" onclick="startDay()">🎙 Start listening</button>
       <button id="muteBtn" onclick="muted=!muted; if(muted) speechSynthesis.cancel(); vctl()">🔊 Voice on</button>
       <span class="tok">Closing</span> <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})">
     </div>
-    <div class="ctl"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select> <span class="tok" id="sttLabel"></span></div>
+    <div class="ctl"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select> <span class="tok" id="sttLabel"></span> <span class="tok" id="latency"></span></div>
     <div class="day" id="day"></div>
   </div>
   <div class="side">
     <h2>Conversation <span id="who"></span></h2>
     <div id="voiceLog" class="vlog"></div>
-    <form class="typed" onsubmit="event.preventDefault(); const i=$('typed'); sendVoice(i.value); i.value='';">
-      <input id="typed" placeholder="Or type to Fade (stage too loud?)" autocomplete="off"><button class="primary">Send</button>
+    <form class="typed" onsubmit="event.preventDefault(); const i=$('typed'); handleUtterance(i.value, true); i.value='';">
+      <input id="typed" placeholder="Or type to Hazel (stage too loud?)" autocomplete="off"><button class="primary">Send</button>
     </form>
   </div>
 </main>
@@ -96,15 +96,13 @@ async function act(body) {
   await fetch("/api/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   poll();
 }
-// Start day: unlock audio on this click, ask Fade for the greeting, then open the mic.
-async function startDay() {
+// Start day: unlock audio on this click, ask Hazel for the greeting, then open the mic.
+// Arm the mic once (browsers need a tap); after that the barber just says "Hey Hazel".
+function startDay() {
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
-  $("startBtn").disabled = true;
-  thinking = true; vctl();
-  try { await act({ type: "startday" }); } finally { thinking = false; vctl(); }
   if (!listening) toggleMic();
 }
-function startOrMic() { if (S && !S.dayStarted) startDay(); else toggleMic(); }
+function startOrMic() { toggleMic(); }
 </script>
 <script src="/voice.js"></script>
 <script>
@@ -115,8 +113,8 @@ function render() {
   $("mode").className = "pill " + (a.mode === "AI" ? "ai" : "off");
   $("mode").textContent = a.mode === "AI" ? "● Claude live" : `● Offline rules${a.offlineReason ? " · " + a.offlineReason : ""}`;
   $("tok").textContent = `${a.model} · ${a.calls} calls`;
-  $("who").textContent = S.barberName + " × Fade";
-  $("startBtn").classList.toggle("hidden", S.dayStarted);
+  $("who").textContent = S.barberName + " × Hazel";
+  $("startBtn").classList.toggle("hidden", listening);
   if (S.scenario !== "barber") $("micState").textContent = "Tip: click Restart day for the barber story.";
   const st = S.stats;
   $("day").innerHTML = [["queue", S.joinsPaused ? "closed" : "open"], ["waiting", st.waiting], ["served", st.served], ["closing", S.closeAt]]

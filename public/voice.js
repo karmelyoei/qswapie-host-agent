@@ -1,4 +1,4 @@
-// Barber voice page logic: mic -> /stt (Reson8) or Web Speech -> POST voice -> Fade's reply spoken out loud.
+// Barber voice page logic: mic -> /stt (Reson8) or Web Speech -> wake word "Hey Hazel" -> streamed reply spoken out loud.
 // Expects $, esc, act and the global S (latest /api/state) from the page.
 let muted = new URLSearchParams(location.search).get("voice") === "off", listening = false, speaking = false, thinking = false, sttMode = "", lastSpoken = null, lastCandidate = "";
 let ws = null, audioCtx = null, micStream = null, proc = null, rec = null;
@@ -15,15 +15,21 @@ function vctl() {
   const mood = thinking || (S && S.agent.busy) ? "thinking" : speaking ? "happy" : "idle";
   $("mascot").className = "is-" + mood; $("mascot").dataset.state = mood;
   if (window.onVoiceState) window.onVoiceState(orb);
-  if ($("micState")) $("micState").textContent = S && !S.dayStarted && !thinking ? "Tap Start day, Fade will say hi." : thinking ? "Fade is thinking…" : speaking ? "Fade is talking (mic paused)" : listening ? "Listening… just talk." : "Tap the mic and talk. Fade answers out loud.";
+  if ($("micState")) $("micState").textContent = S && !S.dayStarted && !thinking ? "Say “Hey Hazel” to start the day." : thinking ? "Hazel is thinking…" : speaking ? "Hazel is talking (mic paused)" : listening ? "Listening… say “Hey Hazel”" : "Tap the mic once, then say “Hey Hazel”.";
 }
 
 function renderVoice() {
   if ($("closeAt") && document.activeElement !== $("closeAt")) $("closeAt").value = S.closeAt;
   const maxId = S.voice.length ? S.voice[S.voice.length - 1].id : 0;
   if (lastSpoken === null || maxId < lastSpoken) lastSpoken = maxId; // page load or reset: don't replay history
-  for (const v of S.voice) if (v.id > lastSpoken) { lastSpoken = v.id; if (v.who === "agent") speak(v.text); }
-  const html = S.voice.map(v => `<div class="vb ${v.who} transcript-item ${v.who === "barber" ? "barber" : "fade"}"><div class="meta speaker">${v.who === "barber" ? esc(S.barberName) : "<b>F</b> Fade (AI)" + (v.proactive ? " · proactive" : "")} <time>${v.t}</time></div><p>${esc(v.text)}</p></div>`).join("");
+  for (const v of S.voice) if (v.id > lastSpoken) {
+    lastSpoken = v.id;
+    if (v.who !== "agent") continue;
+    if (!v.proactive && streamedReplies > 0) { streamedReplies--; continue; }
+    speak(v.text);
+    awakeUntil = Date.now() + 9000; // proactive news: give the barber a moment to answer without the wake word
+  }
+  const html = S.voice.map(v => `<div class="vb ${v.who} transcript-item ${v.who === "barber" ? "barber" : "fade"}"><div class="meta speaker">${v.who === "barber" ? esc(S.barberName) : "<b>H</b> Hazel (AI)" + (v.proactive ? " · proactive" : "")} <time>${v.t}</time></div><p>${esc(v.text)}</p></div>`).join("");
   const log = $("voiceLog");
   if (log.dataset.h !== html) {
     log.innerHTML = html || `<p class="tok">Try: "Beautiful morning! Let's optimise today, open the queue."</p>`;
@@ -76,13 +82,77 @@ function say(text) {
 }
 function speak(text) { say(text); }
 
-const FILLERS = ["Hmm, let me check the chairs...", "One sec, boss...", "Checking the book...", "Let me peek at the queue..."];
+const FILLERS = ["Hmm, let me check the chairs...", "One sec...", "Checking the book..."];
+let streamedReplies = 0, awakeUntil = 0, holding = false;
+
+// The clock pauses while the barber talks with Hazel, so the story doesn't run away mid-conversation.
+function setHold(on) {
+  if (on === holding) { if (on) act({ type: "hold", on: true, ms: 20000 }); return; }
+  holding = on; act({ type: "hold", on, ms: 20000 });
+}
+setInterval(() => {
+  const busy = thinking || speaking || Date.now() < awakeUntil;
+  if (busy && holding) act({ type: "hold", on: true, ms: 20000 }); // refresh
+  if (!busy && holding) setHold(false);
+}, 4000);
+
+// Wake word ("hey hazel", configurable with WAKE_WORDS); text after it is the command.
+function findWake(text) {
+  const norm = " " + text.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim() + " ";
+  const words = ((S && S.wakeWords) || ["hey hazel", "hazel", "hey q"]).slice().sort((x, y) => y.length - x.length);
+  for (const w of words) {
+    const i = norm.indexOf(" " + w + " ");
+    if (i >= 0) return norm.slice(i + w.length + 2).trim();
+  }
+  return null;
+}
+
+async function handleUtterance(text, typed) {
+  text = (text || "").trim();
+  if (!text || thinking) return;
+  const cmd = findWake(text);
+  const awake = Date.now() < awakeUntil;
+  if (cmd === null && !awake && !typed) { $("interim").textContent = `(heard "${text}": say "Hey Hazel" first)`; return; }
+  setHold(true);
+  if (S && !S.dayStarted) { // first wake: Hazel greets with today's outlook
+    thinking = true; vctl();
+    try { await act({ type: "startday" }); } finally { thinking = false; vctl(); }
+    awakeUntil = Date.now() + 15000;
+    return;
+  }
+  const command = cmd === null ? text : cmd;
+  if (command.length < 2) { say(`Yes, ${S.barberName}?`); awakeUntil = Date.now() + 9000; return; }
+  sendVoice(command);
+}
+
+// Streams the reply and speaks each sentence as soon as it is complete.
 async function sendVoice(text) {
   text = (text || "").trim();
   if (!text || thinking) return;
-  thinking = true; $("interim").textContent = text; vctl();
-  const filler = setTimeout(() => say(FILLERS[Math.floor(Math.random() * FILLERS.length)]), 1500);
-  try { await act({ type: "voice", text }); } finally { clearTimeout(filler); thinking = false; $("interim").textContent = ""; vctl(); }
+  thinking = true; $("interim").textContent = text; vctl(); setHold(true);
+  const t0 = performance.now();
+  let firstSpoken = 0, buf = "";
+  const speakReady = (final) => {
+    const m = final ? [buf, buf] : buf.match(/^(.*?[.!?])(\s|$)/s);
+    if (!m || !m[1].trim()) return;
+    if (!firstSpoken) { firstSpoken = performance.now() - t0; if ($("latency")) $("latency").textContent = (firstSpoken / 1000).toFixed(1) + " s"; }
+    say(m[1].trim()); buf = buf.slice(m[0].length);
+    if (!final) speakReady(false);
+  };
+  const filler = setTimeout(() => { if (!firstSpoken) say(FILLERS[Math.floor(Math.random() * FILLERS.length)]); }, 1500);
+  try {
+    streamedReplies++;
+    const r = await fetch("/api/voice-stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      speakReady(false);
+    }
+    speakReady(true);
+  } catch { streamedReplies = Math.max(0, streamedReplies - 1); }
+  finally { clearTimeout(filler); thinking = false; $("interim").textContent = ""; vctl(); awakeUntil = Date.now() + 9000; poll(); }
 }
 
 async function toggleMic() {
@@ -125,7 +195,7 @@ async function startReson8() {
     let m; try { m = JSON.parse(e.data); } catch { return; }
     if (m.type === "turn_start" && !thinking) $("interim").textContent = "…";
     if (m.type === "turn_end_candidate") { lastCandidate = m.text; if (!thinking) $("interim").textContent = m.text; }
-    if (m.type === "turn_end") { const t = lastCandidate; lastCandidate = ""; if (!speaking) sendVoice(t); }
+    if (m.type === "turn_end") { const t = lastCandidate; lastCandidate = ""; if (!speaking) handleUtterance(t); }
   };
   sock.onclose = () => { // Reson8 dropped: fall back to the browser recogniser
     if (ws !== sock || !listening) return;
@@ -155,7 +225,7 @@ function startWebSpeech() {
   rec.onresult = (e) => {
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) sendVoice(t); else if (!thinking) $("interim").textContent = t;
+      if (e.results[i].isFinal) handleUtterance(t); else if (!thinking) $("interim").textContent = t;
     }
   };
   rec.onend = () => { if (listening && rec && !speaking) try { rec.start(); } catch {} };

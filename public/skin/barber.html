@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111827">
-  <title>Fade · QSwapie Host</title>
+  <title>Hazel · Barber sidekick</title>
   <!-- Stage skin designed with Codex (barber.css, mascot.svg); warm.css adds the warm accent and app controls. -->
   <link rel="stylesheet" href="/skin/barber.css">
   <link rel="stylesheet" href="/skin/warm.css">
@@ -37,10 +37,10 @@
         <div class="panel-foot"><span class="tiny-signal"></span> <span id="footNote">Queue status</span></div>
       </aside>
 
-      <section class="voice-center" aria-label="Voice conversation with Fade">
-        <div class="assistant-id"><span class="assistant-avatar">F</span><div><strong>Fade</strong><small>Your AI shop host</small></div><span class="availability"><i></i> <span id="avail">READY</span></span></div>
+      <section class="voice-center" aria-label="Voice conversation with Hazel">
+        <div class="assistant-id"><span class="assistant-avatar">H</span><div><strong>Hazel</strong><small>Your barbershop squirrel</small></div><span class="availability"><i></i> <span id="avail">READY</span></span></div>
         <div class="core-wrap">
-          <div class="voice-core is-idle" id="voiceCore" role="img" aria-label="Fade is ready to listen">
+          <div class="voice-core is-idle" id="voiceCore" role="img" aria-label="Hazel is ready to listen">
             <div class="core-grid"></div>
             <div class="core-ring ring-one"></div><div class="core-ring ring-two"></div><div class="core-ring ring-three"></div>
             <div class="core-halo"></div><div class="core-orb"><span class="core-glint"></span></div>
@@ -48,11 +48,11 @@
           </div>
           <div class="listening-caption"><span class="caption-pip"></span><span id="micState">Ready when you are</span></div>
         </div>
-        <p class="prompt-line" id="interim">Ask me about the queue, a guest, or the next chair.</p>
-        <button id="startBtn" class="start-day" type="button" onclick="startDay()">▶ Start day</button>
+        <p class="prompt-line" id="interim">Say “Hey Hazel, how are we doing?”</p>
+        <button id="startBtn" class="start-day" type="button" onclick="startDay()">🎙 Start listening</button>
         <div class="voice-controls">
           <button class="mic-button" id="micBtn" type="button" onclick="startOrMic()" aria-label="Start voice conversation"><span class="mic-icon" aria-hidden="true"></span><span class="mic-ripple"></span></button>
-          <span class="mic-hint">TAP TO TALK <kbd>SPACE</kbd></span>
+          <span class="mic-hint">TAP ONCE, THEN SAY “HEY HAZEL” <kbd>SPACE</kbd></span> <span class="latency" id="latency" title="time to Hazel's first spoken word"></span>
         </div>
         <p class="voice-privacy"><span aria-hidden="true">◈</span> Speech by Reson8 · brain by Claude · voice stays in this room</p>
       </section>
@@ -60,8 +60,8 @@
       <aside class="glass-panel transcript-panel" aria-label="Conversation transcript">
         <div class="transcript-head"><div><div class="panel-kicker">YOUR CONVERSATION</div><h2>On the floor</h2></div><span class="transcript-live"><i></i> LIVE</span></div>
         <div class="transcript" id="voiceLog" aria-live="polite"></div>
-        <form class="typed" onsubmit="event.preventDefault(); const i=$('typed'); sendVoice(i.value); i.value='';">
-          <input id="typed" placeholder="Or type to Fade (stage too loud?)" autocomplete="off"><button type="submit">Send</button>
+        <form class="typed" onsubmit="event.preventDefault(); const i=$('typed'); handleUtterance(i.value, true); i.value='';">
+          <input id="typed" placeholder="Or type to Hazel (stage too loud?)" autocomplete="off"><button type="submit">Send</button>
         </form>
         <button class="suggestion" type="button" onclick="sendVoice('Anything new?')"><span class="sparkle">✳</span><div><b>Quick ask</b><p>“Anything new?”</p></div><span class="suggestion-arrow">↗</span></button>
       </aside>
@@ -77,19 +77,17 @@ async function act(body) {
   await fetch("/api/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   poll();
 }
-// Start day: unlock audio on this click, ask Fade for the greeting, then open the mic.
-async function startDay() {
+// Start day: unlock audio on this click, ask Hazel for the greeting, then open the mic.
+// Arm the mic once (browsers need a tap); after that the barber just says "Hey Hazel".
+function startDay() {
   try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
-  $("startBtn").disabled = true;
-  thinking = true; vctl();
-  try { await act({ type: "startday" }); } finally { thinking = false; vctl(); }
   if (!listening) toggleMic();
 }
-function startOrMic() { if (S && !S.dayStarted) startDay(); else toggleMic(); }
+function startOrMic() { toggleMic(); }
 // Skin hook called by voice.js on every state change.
 window.onVoiceState = (state) => {
   $("avail").textContent = { idle: "READY", listening: "LISTENING", thinking: "THINKING", speaking: "TALKING" }[state];
-  $("voiceCore").setAttribute("aria-label", "Fade is " + (state === "idle" ? "ready to listen" : state));
+  $("voiceCore").setAttribute("aria-label", "Hazel is " + (state === "idle" ? "ready to listen" : state));
   $("micBtn").setAttribute("aria-label", state === "listening" ? "Stop listening" : "Start voice conversation");
 };
 document.addEventListener("keydown", (e) => {
@@ -115,9 +113,9 @@ function render() {
   $("chairText").textContent = chair ? `${chair.name} in the chair` : "Free";
   $("chairTag").textContent = chair ? "IN SERVICE" : "FREE";
   $("footNote").textContent = `Queue ${S.joinsPaused ? "closed" : "open"} · ${S.stats.served} served · closing ${S.closeAt}`;
-  $("startBtn").classList.toggle("hidden", S.dayStarted);
+  $("startBtn").classList.toggle("hidden", listening);
   renderVoice();
-  if (!thinking && !listening && $("interim").textContent === "") $("interim").textContent = "Ask me about the queue, a guest, or the next chair.";
+  if (!thinking && !listening && $("interim").textContent === "") $("interim").textContent = "Say “Hey Hazel, how are we doing?”";
 }
 async function poll() {
   try { S = await (await fetch("/api/state")).json(); render(); } catch {}
