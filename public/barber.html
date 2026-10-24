@@ -82,6 +82,7 @@
       <span class="tok">Closing</span> <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})">
     </div>
     <div class="ctl"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select> <label>Speech <select id="sttPick" onchange="sttChoice=this.value; setPref('hazelStt', this.value); if (listening) { stopMic(); toggleMic(); }"><option value="reson8">Reson8</option><option value="browser">Browser</option></select></label>
+          <label>Brain <select id="brainPick" onchange="brainChoice=this.value; setPref('hazelBrain', this.value)"><option value="claude">Claude</option><option value="openai">OpenAI</option></select></label>
           <label><input type="checkbox" id="wakeToggle" onchange="wakeOn=this.checked; setPref('hazelWake', this.checked ? 'on' : 'off')"> Wake word</label> <span class="tok" id="sttLabel"></span> <span class="tok" id="latency"></span></div>
     <div class="day" id="day"></div>
   </div>
@@ -110,7 +111,7 @@ function startDay() {
 function startOrMic() { toggleMic(); }
 </script>
 <script src="/voice.js"></script>
-<script>$("sttPick").value = sttChoice; $("wakeToggle").checked = wakeOn;</script>
+<script>$("sttPick").value = sttChoice; $("wakeToggle").checked = wakeOn; setTimeout(() => { $("brainPick").value = brainChoice || (S && S.brain && S.brain.default) || "claude"; }, 900);</script>
 <script>
 function render() {
   if (!S) return;

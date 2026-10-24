@@ -148,7 +148,8 @@ let streamedReplies = 0, awakeUntil = 0, holding = false, streamCtrl = null;
 const pref = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch { return d; } };
 const setPref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 let sttChoice = pref("hazelStt", "reson8");        // "reson8" or "browser"
-let wakeOn = pref("hazelWake", "off") === "on";     // demo default: off, every finished turn goes to Hazel
+let wakeOn = pref("hazelWake", "off") === "on";
+let brainChoice = pref("hazelBrain", "");            // "" = server default (VOICE_BRAIN)     // demo default: off, every finished turn goes to Hazel
 function heard(text, final) { if ($("heard")) $("heard").textContent = text ? (final ? "Heard: " : "Hearing: ") + text : ""; }
 function meter(rms) { if ($("micLevel")) $("micLevel").style.width = Math.min(100, Math.round(rms * 400)) + "%"; }
 
@@ -210,7 +211,7 @@ async function sendVoice(text) {
   try {
     streamedReplies++;
     streamCtrl = new AbortController();
-    const r = await fetch("/api/voice-stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }), signal: streamCtrl.signal });
+    const r = await fetch("/api/voice-stream", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, brain: brainChoice || (S && S.brain && S.brain.default) || "claude" }), signal: streamCtrl.signal });
     const reader = r.body.getReader(), dec = new TextDecoder();
     for (;;) {
       const { value, done } = await reader.read();
@@ -220,7 +221,7 @@ async function sendVoice(text) {
     }
     speakReady(true);
   } catch { streamedReplies = Math.max(0, streamedReplies - 1); }
-  finally { clearTimeout(filler); thinking = false; $("interim").textContent = ""; vctl(); awakeUntil = Date.now() + 9000; poll(); }
+  finally { setTimeout(() => { if ($("latency") && S && S.brain && S.brain.last && firstSpoken) $("latency").textContent = `${S.brain.last} · ${(firstSpoken / 1000).toFixed(1)} s`; }, 900); clearTimeout(filler); thinking = false; $("interim").textContent = ""; vctl(); awakeUntil = Date.now() + 9000; poll(); }
 }
 
 async function toggleMic() {

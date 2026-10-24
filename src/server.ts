@@ -42,6 +42,7 @@ function state() {
     closeAt: clock(sim.closeAt),
     voice: sim.voice.map((v) => ({ ...v, t: clock(v.t) })),
     reson8: Boolean(process.env.RESON8_API_KEY),
+    brain: { default: process.env.VOICE_BRAIN === "openai" ? "openai" : "claude", openaiReady: Boolean(process.env.OPENAI_API_KEY), last: agent.lastBrain },
     tts: { openai: Boolean(process.env.OPENAI_API_KEY) && ttsChars < TTS_CAP, voice: TTS_VOICE, chars: ttsChars, cap: TTS_CAP },
     wakeWords: WAKE_WORDS,
     stats: sim.stats(),
@@ -127,9 +128,11 @@ const server = http.createServer(async (req, res) => {
       // Streams Hazel's reply as plain text so the browser can speak the first sentence early.
       let raw = "";
       for await (const c of req) raw += c;
-      const text = String(JSON.parse(raw || "{}").text ?? "").trim().slice(0, 500);
+      const body = JSON.parse(raw || "{}");
+      const text = String(body.text ?? "").trim().slice(0, 500);
+      const brain = body.brain === "openai" || body.brain === "claude" ? body.brain : undefined;
       res.writeHead(200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-cache" });
-      if (text) await agent.voiceTurn(text, (d) => res.write(d));
+      if (text) await agent.voiceTurn(text, (d) => res.write(d), brain);
       return res.end();
     }
     if (req.url === "/api/action" && req.method === "POST") {

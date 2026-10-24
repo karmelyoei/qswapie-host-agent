@@ -24,6 +24,7 @@ Built at **Agentic AI Hack by Jamie** ({Tech: Europe}, Berlin, 2026-10-24), Open
 
 **Page 2: the barber voice page** (`http://localhost:5173/barber`)
 - Big orb mic, live transcript, natural voice output, mute, voice picker, closing time, typed fallback.
+- **Brain: Claude (default) or OpenAI, switchable** for Hazel's free answers; the scripted story steps are instant templates and the guest agent always runs on Claude. If OpenAI fails, Claude answers silently.
 - **Wake word "Hey Hazel"**: the mic listens hands-free; on the first wake word Hazel greets the barber (Nico) with today's numbers and waits for the go-ahead.
 - Voice commands with tools: open or close the queue, today's summary, finish time, capacity check ("2 more?"), recent events.
 - **Between cuts**, Hazel proactively reports news: "Nico, heads up: Lina walked away, Ben swapped with Ada."
@@ -68,6 +69,8 @@ No keys? It still runs: see [Fallbacks](#fallbacks).
 | `OPENAI_TTS_VOICE` | `coral` | OpenAI voice name (e.g. coral, ballad, sage, verse, marin) |
 | `OPENAI_TTS_MODEL` | `gpt-4o-mini-tts` | OpenAI TTS model (supports style instructions) |
 | `TTS_MAX_CHARS` | `20000` | Cost cap: total TTS characters per server run (count shown on the barber page) |
+| `VOICE_BRAIN` | `claude` | Default brain for Hazel's free answers: `claude` or `openai` (switchable on the barber page) |
+| `OPENAI_CHAT_MODEL` | `gpt-4o-mini` | OpenAI chat model when the brain is OpenAI |
 | `WAKE_WORDS` | `hey hazel,hazel,hey hasel,hey hazle,hey q,hey queue,hey cue,hey kyu` | Comma-separated wake words for the barber page |
 
 Keys are read only by the server and never sent to the browser or written to logs.

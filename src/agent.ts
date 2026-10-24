@@ -301,7 +301,8 @@ export class Agent {
   }
 
   // One voice turn. write() receives the reply text as it streams, so the browser can start speaking early.
-  async voiceTurn(text: string, write: (delta: string) => void) {
+  lastBrain = "";
+  async voiceTurn(text: string, write: (delta: string) => void, brain = process.env.VOICE_BRAIN || "claude") {
     const sim = this.sim;
     const t0 = Date.now();
     sim.say("barber", text);
@@ -326,9 +327,16 @@ export class Agent {
         ? `You got it, ${sim.barberName}: the queue is open for a few more. I'll shout if anyone bails.`
         : `Deal, closing the list at ${d.clientsToday === 10 ? "ten" : d.clientsToday}, done by ${spoken(d.finishAround).replace(" o'clock", "")}. I'll shout if anyone bails.`;
       write(reply);
-    } else if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
-      try { reply = await this.voiceStream(text, write); }
-      catch (err) { this.goOffline(failure(err)); }
+    } else {
+      // Free questions: the chosen brain. OpenAI errors fall back to Claude silently.
+      if (brain === "openai" && process.env.OPENAI_API_KEY) {
+        try { reply = await this.openaiStream(text, write); this.lastBrain = "OpenAI"; }
+        catch (err) { console.log(`[openai] chat failed: ${(err as Error).message}; using Claude`); }
+      }
+      if (!reply && this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
+        try { reply = await this.voiceStream(text, write); this.lastBrain = "Claude"; }
+        catch (err) { this.goOffline(failure(err)); }
+      }
     }
     if (!reply) { reply = this.voiceRules(text); write(reply); }
     sim.say("agent", reply);
@@ -337,9 +345,49 @@ export class Agent {
   }
 
   // Haiku with the state in the prompt (usually no tool round-trip), streamed.
+  private voiceState() {
+    const sim = this.sim;
+    return { ...sim.daySummary(), ifTwoMore: sim.capacity(2), recentNews: sim.events.filter((e) => e.notable).slice(-3).map((e) => `${clock(e.t)} ${e.text}`) };
+  }
+
+  // OpenAI brain for free questions: same persona and state, streamed Chat Completions, no tools.
+  private async openaiStream(text: string, write: (delta: string) => void) {
+    const sim = this.sim;
+    const history = sim.voice.slice(-5, -1).map((v) => ({ role: v.who === "barber" ? "user" : "assistant", content: v.text }));
+    const messages = [{ role: "system", content: VOICE_SYSTEM }, ...history, { role: "user", content: `[state] ${JSON.stringify(this.voiceState())}\n${sim.barberName}: ${text}` }];
+    const t0 = Date.now();
+    const r = await fetch(`${process.env.OPENAI_BASE_URL || "https://api.openai.com/v1"}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini", messages, stream: true, max_completion_tokens: 150 }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
+    const reader = r.body.getReader(), dec = new TextDecoder();
+    let buf = "", said = "", first = 0;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const d = JSON.parse(data).choices?.[0]?.delta?.content;
+          if (d) { if (!first) first = Date.now() - t0; said += d; write(d); }
+        } catch { /* partial line */ }
+      }
+    }
+    console.log(`[openai] voice ${Date.now() - t0} ms (first text ${first || "-"} ms)`);
+    return said.trim();
+  }
+
   private async voiceStream(text: string, write: (delta: string) => void) {
     const sim = this.sim;
-    const state = { ...sim.daySummary(), ifTwoMore: sim.capacity(2), recentNews: sim.events.filter((e) => e.notable).slice(-3).map((e) => `${clock(e.t)} ${e.text}`) };
+    const state = this.voiceState();
     const messages: Anthropic.MessageParam[] = [];
     for (const v of sim.voice.slice(-5, -1)) {
       const role = v.who === "barber" ? "user" : "assistant";
