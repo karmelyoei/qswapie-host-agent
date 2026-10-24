@@ -120,8 +120,8 @@ export class Agent {
       }
     }
     const open = (action: string) => sim.alerts.some((a) => a.action === action && (a.status === "open" || sim.t - a.t < 15));
-    if (sim.backlog() >= 40 && !sim.joinsPaused && !open("pause_joins")) this.once("backlog", `backlog is ${sim.backlog()} min`);
-    if (sim.joinsPaused && sim.backlog() < 20 && !open("resume_joins")) this.once("resume", `joins are paused and backlog is down to ${sim.backlog()} min`);
+    if (sim.scenario !== "barber" && sim.backlog() >= 40 && !sim.joinsPaused && !open("pause_joins")) this.once("backlog", `backlog is ${sim.backlog()} min`);
+    if (sim.scenario !== "barber" && sim.joinsPaused && sim.backlog() < 20 && !open("resume_joins")) this.once("resume", `joins are paused and backlog is down to ${sim.backlog()} min`);
   }
 
   // Raise a watchdog signal at most once per 10 sim minutes, so a "no action" answer does not trigger a new call every tick.
@@ -152,7 +152,7 @@ export class Agent {
         break;
       }
       case "mark_no_show": out = sim.markNoShow(input.guest_id); if (!out.startsWith("error")) sim.log(mode, "mark_no_show", `${who(input.guest_id)} marked no-show, line moved up`, input.reason); break;
-      case "alert_owner": out = sim.alertOwner(input.text, input.reason, input.suggested_action); if (!out.startsWith("error")) sim.log(mode, "alert_owner", input.text, input.reason); break;
+      case "alert_owner": out = sim.scenario === "barber" && /joins/.test(input.suggested_action) ? "error: in barber voice mode the barber opens and closes the queue by voice" : sim.alertOwner(input.text, input.reason, input.suggested_action); if (!out.startsWith("error")) sim.log(mode, "alert_owner", input.text, input.reason); break;
       default: out = "error: unknown tool";
     }
     return out;
