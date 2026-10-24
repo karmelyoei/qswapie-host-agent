@@ -35,23 +35,29 @@ Both pages run on the **same live simulation**, so they can sit side by side on 
 
 Requires **Node.js 24+** (TypeScript runs directly through Node's type stripping, so there is no build step).
 
-**Windows (PowerShell)**: both keys are typed hidden and live only in this window.
+Run it in 3 commands (the keys are typed hidden and live only in that window):
+
+**Windows (PowerShell)**
 ```powershell
-npm install
-$a = Read-Host 'Anthropic key' -AsSecureString; $r = Read-Host 'Reson8 key' -AsSecureString; $env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', $a).Password; $env:RESON8_API_KEY = [Net.NetworkCredential]::new('', $r).Password; npm start
+git clone https://github.com/karmelyoei/qswapie-host-agent; cd qswapie-host-agent; npm install
+$a = Read-Host 'Anthropic key' -AsSecureString; $r = Read-Host 'Reson8 key' -AsSecureString; $o = Read-Host 'OpenAI key' -AsSecureString; $env:ANTHROPIC_API_KEY = [Net.NetworkCredential]::new('', $a).Password; $env:RESON8_API_KEY = [Net.NetworkCredential]::new('', $r).Password; $env:OPENAI_API_KEY = [Net.NetworkCredential]::new('', $o).Password
+npm start
 ```
 
 **macOS / Linux (bash)**
 ```bash
-npm install
-read -rs -p "Anthropic key: " ANTHROPIC_API_KEY; echo; read -rs -p "Reson8 key: " RESON8_API_KEY; echo; export ANTHROPIC_API_KEY RESON8_API_KEY; npm start
+git clone https://github.com/karmelyoei/qswapie-host-agent && cd qswapie-host-agent && npm install
+read -rs -p "Anthropic key: " ANTHROPIC_API_KEY; echo; read -rs -p "Reson8 key: " RESON8_API_KEY; echo; read -rs -p "OpenAI key: " OPENAI_API_KEY; echo; export ANTHROPIC_API_KEY RESON8_API_KEY OPENAI_API_KEY
+npm start
 ```
 
-Or copy `.env.example` to `.env` (gitignored) and fill it in, then run `npm start`.
+Or copy `.env.example` to `.env` (gitignored), fill in the keys, and run `npm start`.
 
-Open **two browser windows side by side**, ideally in **Microsoft Edge** (its "Natural" neural voices sound human; Chrome works too):
-- left: http://localhost:5173/ (queue agent)
-- right: http://localhost:5173/barber (barber voice)
+Then open **two browser windows side by side**, ideally in **Microsoft Edge**:
+- left: http://localhost:5173/ (the queue agent and Today's book)
+- right: http://localhost:5173/barber (Hazel): **tap once** to wake her, then just talk.
+
+Brain: Claude. Voice: OpenAI TTS. Ears: Reson8. Each one falls back on its own (offline rules, browser voice, browser speech recognition).
 
 No keys? It still runs: see [Fallbacks](#fallbacks).
 

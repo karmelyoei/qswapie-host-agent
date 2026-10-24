@@ -29,11 +29,11 @@
       <aside class="glass-panel shop-panel" aria-label="Shop overview">
         <div class="panel-kicker">TODAY · LIVE QUEUE</div>
         <h1><span id="greet">Good afternoon,</span><br><span id="barberName">Nico.</span></h1>
-        <p class="panel-copy">I’m keeping everyone moving while you focus on the cut.</p>
-        <div class="shop-stat"><span>Waiting now</span><strong id="stWaiting">– <small>guests</small></strong></div>
-        <div class="shop-stat"><span>Next up</span><strong class="next-guest" id="stNext">–</strong></div>
-        <div class="chair-status"><span class="chair-icon" aria-hidden="true">✳</span><div><b>Chair 01</b><small id="chairText">–</small></div><i id="chairTag">IN SERVICE</i></div>
-        <div class="panel-kicker" style="margin-top:12px">TODAY'S BOOK</div>
+        <p class="panel-copy hidden">I’m keeping everyone moving while you focus on the cut.</p>
+        <div class="shop-stat hidden"><span>Waiting now</span><strong id="stWaiting">– <small>guests</small></strong></div>
+        <div class="shop-stat hidden"><span>Next up</span><strong class="next-guest" id="stNext">–</strong></div>
+        <div class="chair-status hidden"><span class="chair-icon" aria-hidden="true">✳</span><div><b>Chair 01</b><small id="chairText">–</small></div><i id="chairTag">IN SERVICE</i></div>
+        <div class="panel-kicker" style="margin-top:12px">TODAY'S BOOK · <span id="bookWaiting">2</span> WAITING</div>
         <div class="book" id="book"></div>
         <div class="skin-ctl">
           <label>Closing <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})"></label>
@@ -161,7 +161,7 @@ function render() {
   if (!S) return;
   // Show the clock only once the story has started (after the tap), so an old time never shows.
   $("voiceClock").textContent = $("startOverlay") && !$("startOverlay").classList.contains("gone") ? "--:--" : S.now;
-  if (S.book) $("book").innerHTML = bookHtml(S.book, null);
+  if (S.book) { $("book").innerHTML = bookHtml(S.book, null); $("bookWaiting").textContent = S.stats.waiting; }
   const a = S.agent;
   $("mode").className = "mode-pill " + (a.mode === "AI" ? "ai" : "off");
   $("mode").textContent = a.mode === "AI" ? "● Claude live" : "● Offline rules";
