@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fade · Barber Voice</title>
+<style>
+  :root { --bg:#07080c; --panel:#11131a; --card:#1a1d26; --line:#272b36; --text:#eef0f6; --mut:#8f98a8; --acc:#7c5cff; --ai:#38bdf8; --bad:#ef5b5b; --warn:#f5a524; --ok:#2fbf71; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:radial-gradient(1200px 700px at 50% 20%, #151a2e 0%, var(--bg) 60%); color:var(--text); font:15px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:12px; padding:12px 20px; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:18px; }
+  header h1 span { color:var(--acc); }
+  .clock { font:600 20px ui-monospace, monospace; }
+  .pill { padding:3px 10px; border-radius:99px; font-size:12px; font-weight:600; }
+  .pill.ai { background:#0c3a52; color:var(--ai); }
+  .pill.off { background:#4a2a0a; color:var(--warn); }
+  .spacer { flex:1; }
+  .tok { color:var(--mut); font-size:12px; }
+  button, select, input { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:7px 11px; font:inherit; cursor:pointer; }
+  button:hover { border-color:var(--acc); }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; font-weight:600; }
+  select { max-width:240px; }
+  main { flex:1; display:grid; grid-template-columns: minmax(280px, 1fr) minmax(320px, 1.2fr); gap:24px; padding:8px 24px 20px; min-height:0; }
+  .stage { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; text-align:center; }
+  #voice-panel { display:contents; }
+  .orb { width:min(36vh, 300px); height:min(36vh, 300px); border-radius:50%; position:relative; cursor:pointer; border:none; padding:0;
+    background:radial-gradient(circle at 35% 30%, #a99bff 0%, #6a4cff 35%, #2a1a78 70%, #120b33 100%);
+    box-shadow:0 0 60px rgba(124,92,255,.35), inset 0 0 40px rgba(255,255,255,.08); transition:transform .3s, box-shadow .3s; }
+  .orb .icon { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:56px; }
+  .is-listening .orb { box-shadow:0 0 0 10px rgba(239,91,91,.18), 0 0 90px rgba(239,91,91,.45); animation:pulse 1.4s ease-in-out infinite; }
+  .is-thinking .orb { animation:spin 2.4s linear infinite; background:conic-gradient(from 0deg, #38bdf8, #7c5cff, #ff6bd6, #38bdf8); }
+  .is-speaking .orb { box-shadow:0 0 0 8px rgba(56,189,248,.18), 0 0 110px rgba(56,189,248,.5); animation:talk .5s ease-in-out infinite alternate; }
+  @keyframes pulse { 50% { transform:scale(1.05); } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes talk { to { transform:scale(1.04); } }
+  #micState { font-size:18px; min-height:27px; }
+  .interim { min-height:24px; color:var(--mut); font-style:italic; max-width:520px; }
+  .ctl { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; align-items:center; }
+  .side { display:flex; flex-direction:column; min-height:0; background:rgba(17,19,26,.75); border:1px solid var(--line); border-radius:16px; padding:14px; }
+  .side h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--mut); margin:0 0 10px; display:flex; justify-content:space-between; }
+  .vlog { flex:1; overflow:auto; display:flex; flex-direction:column; gap:10px; padding-bottom:8px; }
+  .vb { max-width:86%; padding:10px 14px; border-radius:16px; }
+  .vb.barber { align-self:flex-end; background:#2b2f3a; border-radius:16px 16px 4px 16px; }
+  .vb.agent { align-self:flex-start; background:#2a2350; border:1px solid #4a3d99; border-radius:16px 16px 16px 4px; font-size:17px; }
+  .vb .meta { font-size:11px; color:var(--mut); }
+  .typed { display:flex; gap:8px; margin-top:8px; }
+  .typed input { flex:1; cursor:text; }
+  .day { display:flex; gap:14px; flex-wrap:wrap; justify-content:center; color:var(--mut); font-size:13px; }
+  .day b { color:var(--text); font:700 18px ui-monospace, monospace; display:block; }
+  .hidden { display:none !important; }
+  @media (max-width: 860px) { main { grid-template-columns:1fr; } .side { min-height:50vh; } }
+</style>
+</head>
+<body>
+<header>
+  <span id="mascot" class="is-idle" data-state="idle" aria-hidden="true"></span>
+  <h1><span>QSwapie</span> · Fade, your barber sidekick</h1>
+  <div class="clock" id="clock">--:--</div>
+  <div id="mode" class="pill">...</div>
+  <div class="spacer"></div>
+  <span class="tok" id="tok"></span>
+  <a href="/" target="_blank"><button>Queue page ↗</button></a>
+  <button onclick="if(confirm('Restart the barber day?')) act({type:'reset',scenario:'barber'})">Restart day</button>
+</header>
+<main>
+  <div class="stage">
+    <div id="voice-panel" class="is-idle">
+      <button class="orb" id="micBtn" onclick="startOrMic()" title="Tap to talk"><span class="icon" id="orbIcon">🎙</span></button>
+    </div>
+    <div id="micState">Tap Start day.</div>
+    <div id="interim" class="interim"></div>
+    <div class="ctl">
+      <button id="startBtn" class="primary" onclick="startDay()">▶ Start day</button>
+      <button id="muteBtn" onclick="muted=!muted; if(muted) speechSynthesis.cancel(); vctl()">🔊 Voice on</button>
+      <span class="tok">Closing</span> <input id="closeAt" type="time" onchange="act({type:'closetime',value:this.value})">
+    </div>
+    <div class="ctl"><span class="tok">Voice</span> <select id="voicePick" onchange="try{localStorage.setItem('fadeVoice',this.value)}catch{}; say('Hey, this is my voice now.')"></select> <span class="tok" id="sttLabel"></span></div>
+    <div class="day" id="day"></div>
+  </div>
+  <div class="side">
+    <h2>Conversation <span id="who"></span></h2>
+    <div id="voiceLog" class="vlog"></div>
+    <form class="typed" onsubmit="event.preventDefault(); const i=$('typed'); sendVoice(i.value); i.value='';">
+      <input id="typed" placeholder="Or type to Fade (stage too loud?)" autocomplete="off"><button class="primary">Send</button>
+    </form>
+  </div>
+</main>
+<script>
+let S = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+async function act(body) {
+  await fetch("/api/action", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  poll();
+}
+// Start day: unlock audio on this click, ask Fade for the greeting, then open the mic.
+async function startDay() {
+  try { speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch {}
+  $("startBtn").disabled = true;
+  thinking = true; vctl();
+  try { await act({ type: "startday" }); } finally { thinking = false; vctl(); }
+  if (!listening) toggleMic();
+}
+function startOrMic() { if (S && !S.dayStarted) startDay(); else toggleMic(); }
+</script>
+<script src="/voice.js"></script>
+<script>
+function render() {
+  if (!S) return;
+  $("clock").textContent = S.now;
+  const a = S.agent;
+  $("mode").className = "pill " + (a.mode === "AI" ? "ai" : "off");
+  $("mode").textContent = a.mode === "AI" ? "● Claude live" : `● Offline rules${a.offlineReason ? " · " + a.offlineReason : ""}`;
+  $("tok").textContent = `${a.model} · ${a.calls} calls`;
+  $("who").textContent = S.barberName + " × Fade";
+  $("startBtn").classList.toggle("hidden", S.dayStarted);
+  if (S.scenario !== "barber") $("micState").textContent = "Tip: click Restart day for the barber story.";
+  const st = S.stats;
+  $("day").innerHTML = [["queue", S.joinsPaused ? "closed" : "open"], ["waiting", st.waiting], ["served", st.served], ["closing", S.closeAt]]
+    .map(([k, v]) => `<div><b>${v}</b>${k}</div>`).join("");
+  renderVoice();
+}
+async function poll() {
+  try { S = await (await fetch("/api/state")).json(); render(); } catch {}
+}
+setInterval(poll, 600);
+poll();
+</script>
+</body>
+</html>

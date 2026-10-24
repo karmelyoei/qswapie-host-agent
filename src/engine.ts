@@ -32,7 +32,7 @@ export interface OwnerAlert { id: number; t: number; text: string; reason: strin
 
 export interface Swap { id: number; a: string; b: string; t: number; status: "proposed" | "accepted" | "declined" }
 
-const BARBER_NAMES = ["Paul", "Ben", "Lina", "Ada", "Mo", "Sara", "Jonas", "Emma", "Theo", "Nora", "Max", "Ida", "Karl", "Rosa", "Finn", "Lea", "Oskar", "Hanna", "Emil", "Zoe"];
+const BARBER_NAMES = ["Paul", "Mo", "Ben", "Lina", "Ada", "Sara", "Jonas", "Emma", "Theo", "Nora", "Max", "Ida", "Karl", "Rosa", "Finn", "Lea", "Oskar", "Hanna", "Emil", "Zoe"];
 const NAMES = ["Mia", "Leo", "Noah", "Emma", "Ben", "Lina", "Paul", "Ella", "Finn", "Lea", "Jonas", "Mila", "Elias", "Clara", "Anton", "Ida", "Theo", "Nora", "Max", "Ava", "Luca", "Zoe", "Emil", "Lotta", "Karl", "Rosa", "Milan", "Frida", "Oskar", "Hanna"];
 export const MEAN_SERVICE = 12;
 const NO_SHOW_FAILSAFE = 12; // engine gives up on a called guest after this many minutes if nobody acts
@@ -82,18 +82,24 @@ export class Sim {
   private names = NAMES;
   private scheduled: { at: number; run: () => void }[] = [];
   private scriptStarted = false;
+  dayStarted = false;
+  barberName = process.env.BARBER_NAME || "Nico";
 
   constructor(scenario: "demo" | "barber" = "demo") {
     this.scenario = scenario;
     const close = /^(\d{1,2}):(\d{2})$/.exec(process.env.CLOSE_TIME ?? "");
     if (close) this.closeAt = Number(close[1]) * 60 + Number(close[2]);
     if (scenario === "barber") {
-      // One barber, queue still closed. Opening it by voice starts the scripted day.
+      // One barber, 9 clients already booked in line, closed for new walk-ins.
+      // The clock waits until the barber taps "Start day"; opening the queue by voice lets walk-ins in.
       this.names = BARBER_NAMES;
-      this.t = 15 * 60 + 30; this.staff = 1; this.joinsPaused = true; this.voiceMode = true;
+      this.t = 15 * 60 + 30; this.staff = 1; this.joinsPaused = true; this.voiceMode = true; this.running = false;
       const g = this.makeGuest({ away: false, service: 14 });
-      g.joinedAt = this.t - 10; g.status = "serving"; g.startAt = this.t - 2; g.endAt = g.startAt + g.service;
+      g.joinedAt = this.t - 20; g.status = "serving"; g.startAt = this.t - 9; g.endAt = g.startAt + g.service;
       this.guests.push(g);
+      const booked: Partial<Guest>[] = [{}, { swapOk: true }, {}, { away: false }, {}, {}, {}, {}, {}]; // Mo, Ben (happy to swap), Lina, Ada, ...
+      booked.forEach((o, i) => this.join({ swapOk: false, willNoShow: false, ...o }, this.t - 18 + i * 2, true));
+      this.signals = [];
       this.recompute();
       return;
     }
@@ -163,20 +169,23 @@ export class Sim {
     this.joinsPaused = !open;
     this.event(`${by} ${open ? "opened" : "closed"} the queue`, false);
     this.signal(`${by} ${open ? "opened" : "closed"} new joins`);
-    if (open && this.scenario === "barber" && !this.scriptStarted) this.startBarberDay();
+    if (open && this.scenario === "barber" && !this.scriptStarted) {
+      // Opening the queue lets 6 walk-ins in over the next minutes.
+      this.scriptStarted = true;
+      [3, 5, 7, 9, 11, 13].forEach((m) => this.at(m, () => this.join({ swapOk: false, willNoShow: false })));
+    }
   }
 
-  // Scripted afternoon for the voice demo: 9 walk-ins right away, Ada in a hurry, Lina cancels, 6 more later.
-  private startBarberDay() {
-    this.scriptStarted = true;
-    const at = (dt: number, run: () => void) => this.scheduled.push({ at: this.t + dt, run });
-    const first: Partial<Guest>[] = [{ swapOk: true }, {}, { away: false }, {}, {}, {}, {}, {}, {}];
-    first.forEach((o, i) => at(0.2 + i * 0.25, () => this.join({ swapOk: false, willNoShow: false, ...o })));
-    const ada = () => this.guests.find((g) => g.name === "Ada");
-    const lina = () => this.guests.find((g) => g.name === "Lina");
-    at(3, () => { const g = ada(); if (g) this.setHurry(g.id); });
-    at(5, () => { const g = lina(); if (g) this.cancel(g.id); });
-    [9, 11, 13, 15, 17, 19].forEach((m) => at(m, () => this.join({ swapOk: false, willNoShow: false })));
+  private at(dt: number, run: () => void) { this.scheduled.push({ at: this.t + dt, run }); }
+
+  // Barber taps "Start day": the clock runs, and the scripted afternoon begins (Ada in a hurry, Lina cancels).
+  startDay() {
+    if (this.dayStarted) return;
+    this.dayStarted = true; this.running = true;
+    if (this.scenario !== "barber") return;
+    const find = (n: string) => this.guests.find((g) => g.name === n);
+    this.at(4, () => { const g = find("Ada"); if (g) this.setHurry(g.id); });
+    this.at(7, () => { const g = find("Lina"); if (g) this.cancel(g.id); });
   }
 
   // Minutes of work left for all chairs, and when the last client will be done.
@@ -198,8 +207,15 @@ export class Sim {
       inChair: this.guests.filter((g) => g.status === "serving").map((g) => g.name),
       waiting: this.line.length, cancelled: this.guests.filter((g) => g.status === "left").length,
       noShows: this.guests.filter((g) => g.status === "noshow").length,
-      avgCutMin: MEAN_SERVICE, finishAround: clock(this.finishAt()),
+      avgCutMin: MEAN_SERVICE, finishAround: clock(this.finishAt()), barberName: this.barberName,
+      nextClient: this.get(this.line[0] ?? "")?.name ?? null,
+      nextChairFreeInMin: this.nextChairFree(),
     };
+  }
+
+  private nextChairFree() {
+    const ends = this.guests.filter((g) => g.status === "serving").map((g) => (g.endAt ?? 0) - this.t);
+    return ends.length < this.staff ? 0 : Math.max(0, Math.round(Math.min(...ends)));
   }
 
   capacity(extra: number) {
@@ -219,8 +235,7 @@ export class Sim {
     const news = this.events.slice(this.spokenCursor).filter((e) => e.notable).map((e) => e.text);
     this.spokenCursor = this.events.length;
     const next = this.get(this.line[0] ?? "");
-    const quips = ["Fresh fade, fresh news.", "Clippers down, ears up.", "Quick one between cuts."];
-    const parts = [quips[this.voice.length % quips.length]];
+    const parts = [`${this.barberName}, heads up:`];
     if (news.length) parts.push(news.slice(-2).join(". ") + ".");
     if (!news.length) return;
     if (next) parts.push(`${next.name} is next.`);

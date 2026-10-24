@@ -292,11 +292,29 @@ export class Agent {
     return reply;
   }
 
-  private async voiceClaude() {
+  // Barber taps "Start day": the clock starts and Fade greets them proactively with today's outlook.
+  async greet() {
+    const sim = this.sim;
+    if (sim.dayStarted) return;
+    sim.startDay();
+    let reply = "";
+    if (this.client && this.mode === "AI" && this.calls < MAX_CALLS) {
+      const prompt = `[${sim.barberName} just opened the barber screen and tapped Start day. Nobody asked you anything: greet ${sim.barberName} first, casually and by name, then give today's outlook from day_summary: clients today, first one in nextChairFreeInMin minutes, finish time. Like: "Hey ${sim.barberName}, what's up? Today's gonna be packed: ..."]`;
+      try { reply = await this.voiceClaude([{ role: "user", content: prompt }]); }
+      catch (err) { this.goOffline(failure(err)); }
+    }
+    if (!reply) {
+      const d = sim.daySummary();
+      reply = `Hey ${sim.barberName}, what's up? Today's gonna be packed: you've got ${d.clientsToday} heads booked, first one in ${d.nextChairFreeInMin} minutes, and you'll be done around ${spoken(d.finishAround)}.`;
+    }
+    sim.say("agent", reply, true);
+  }
+
+  private async voiceClaude(seed?: Anthropic.MessageParam[]) {
     const sim = this.sim;
     // Rebuild a short alternating history from the voice transcript.
-    const messages: Anthropic.MessageParam[] = [];
-    for (const v of sim.voice.slice(-4)) { // short context = fast answers
+    const messages: Anthropic.MessageParam[] = seed ?? [];
+    if (!seed) for (const v of sim.voice.slice(-4)) { // short context = fast answers
       const role = v.who === "barber" ? "user" : "assistant";
       const last = messages[messages.length - 1];
       if (last && last.role === role) last.content += "\n" + v.text;
@@ -304,7 +322,7 @@ export class Agent {
     }
     while (messages.length && messages[0].role !== "user") messages.shift();
     const lastUser = messages[messages.length - 1];
-    lastUser.content = `[now ${clock(sim.t)}, queue ${sim.joinsPaused ? "closed" : "open"}, closing ${clock(sim.closeAt)}]\n${lastUser.content}`;
+    lastUser.content = `[barber: ${sim.barberName}, now ${clock(sim.t)}, queue ${sim.joinsPaused ? "closed" : "open"}, closing ${clock(sim.closeAt)}]\n${lastUser.content}`;
     for (let i = 0; i < 4; i++) {
       this.calls++;
       const params: any = { model: MODEL, max_tokens: 300, system: VOICE_SYSTEM, tools: VOICE_TOOLS, messages, output_config: { effort: "low" } };
@@ -336,22 +354,22 @@ export class Agent {
     const num = Number((/(\d+)\s*more/.exec(t) ?? /\b(one|two|three|four|five)\s+more/.exec(t))?.[1]
       ?.replace("one", "1").replace("two", "2").replace("three", "3").replace("four", "4").replace("five", "5"));
     if (/\b(close|stop|shut)\b/.test(t) && !/should we|or do we/.test(t)) { this.execVoice("close_queue", { reason: "barber said close" }); return `Done, queue's closed. Everyone already in line still gets their cut, nobody leaves looking half finished.`; }
-    if (/\bopen\b/.test(t)) { this.execVoice("open_queue", { reason: "barber said open" }); return `${/morning|afternoon|day/.test(t) ? "Beautiful one indeed, boss! " : ""}Queue's open, let's make some heads look expensive.`; }
+    if (/\bopen\b/.test(t)) { this.execVoice("open_queue", { reason: "barber said open" }); return `${/morning|afternoon|day/.test(t) ? "Beautiful one indeed, ${sim.barberName}! " : ""}Queue's open, let's make some heads look expensive.`; }
     if (/power|capacity|more|should we close/.test(t)) {
       const c = sim.capacity(num || 2);
       return c.fits
         ? `${c.clientsToday} heads and still standing! Two more gets you done by ${spoken(c.finishWithExtra)}, ${c.minutesOverOrUnder > -20 ? "just before closing" : "well before closing"}, so yes, but hydrate those clippers.`.replace("Two more", c.extraClients === 2 ? "Two more" : `${c.extraClients} more`)
-        : `Honestly, boss, no. ${c.extraClients} more runs you to ${spoken(c.finishWithExtra)}, ${c.minutesOverOrUnder} minutes past closing, so I'd close it, your back will thank me.`;
+        : `Honestly, ${sim.barberName}, no. ${c.extraClients} more runs you to ${spoken(c.finishWithExtra)}, ${c.minutesOverOrUnder} minutes past closing, so I'd close it, your back will thank me.`;
     }
     if (/new|happen|update|news/.test(t)) {
       const ev = sim.recentEvents().filter((e) => !/walk-ins joined/.test(e)).slice(-3).map((e) => e.slice(6));
-      return ev.length && ev[0] !== "nothing new" ? `Oh, you'll like this. ${ev.join(". ")}. Drama, but under control.` : `All quiet, boss. Just you, the clippers and good vibes.`;
+      return ev.length && ev[0] !== "nothing new" ? `Oh, you'll like this. ${ev.join(". ")}. Drama, but under control.` : `All quiet, ${sim.barberName}. Just you, the clippers and good vibes.`;
     }
     if (/today|looking|how/.test(t)) {
       const d = sim.daySummary();
-      return `Looking good, boss! About ${d.clientsToday} heads today, ${d.waiting} still waiting, and you'll be done by ${spoken(d.finishAround)}.`;
+      return `Looking good, ${sim.barberName}! About ${d.clientsToday} heads today, ${d.waiting} still waiting, and you'll be done by ${spoken(d.finishAround)}.`;
     }
-    return `Sorry boss, the clippers won that round. Ask me how today looks, what's new, or to open or close the queue.`;
+    return `Sorry ${sim.barberName}, the clippers won that round. Ask me how today looks, what's new, or to open or close the queue.`;
   }
 
   async summary() {

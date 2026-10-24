@@ -30,6 +30,8 @@ function state() {
     summary: sim.summary,
     scenario: sim.scenario,
     voiceMode: sim.voiceMode,
+    dayStarted: sim.dayStarted,
+    barberName: sim.barberName,
     closeAt: clock(sim.closeAt),
     voice: sim.voice.map((v) => ({ ...v, t: clock(v.t) })),
     reson8: Boolean(process.env.RESON8_API_KEY),
@@ -66,8 +68,8 @@ async function action(body: any) {
       break;
     }
     case "reset": sim = new Sim(body.scenario === "barber" ? "barber" : "demo"); agent = new Agent(sim); break;
-    case "voicemode": sim.voiceMode = !sim.voiceMode; break;
-    case "closetime": { const m = /^(d{1,2}):(d{2})$/.exec(String(body.value)); if (m) sim.closeAt = Number(m[1]) * 60 + Number(m[2]); break; }
+    case "startday": await agent.greet(); break;
+    case "closetime": { const m = /^(\d{1,2}):(\d{2})$/.exec(String(body.value)); if (m) sim.closeAt = Number(m[1]) * 60 + Number(m[2]); break; }
     case "voice": { const text = String(body.text ?? "").trim().slice(0, 500); if (text) await agent.voice(text); break; }
   }
 }
@@ -86,10 +88,11 @@ const server = http.createServer(async (req, res) => {
       return res.end("{}");
     }
     const urlPath = (req.url ?? "/").split("?")[0]; // allow ?voice=off, ?skin=new
-    const file = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
+    const PAGES: Record<string, string> = { "/": "index.html", "/guests": "index.html", "/barber": "barber.html" };
+    const file = PAGES[urlPath.replace(/\/+$/, "") || "/"] ?? urlPath.replace(/^\/+/, "");
     const full = path.join(PUBLIC, path.normalize(file));
     if (!full.startsWith(PUBLIC) || !fs.existsSync(full)) { res.writeHead(404); return res.end("not found"); }
-    res.writeHead(200, { "content-type": full.endsWith(".html") ? "text/html; charset=utf-8" : "text/plain" });
+    res.writeHead(200, { "content-type": full.endsWith(".html") ? "text/html; charset=utf-8" : full.endsWith(".js") ? "text/javascript; charset=utf-8" : full.endsWith(".css") ? "text/css; charset=utf-8" : full.endsWith(".svg") ? "image/svg+xml" : "text/plain" });
     res.end(fs.readFileSync(full));
   } catch {
     res.writeHead(500); res.end("error");
