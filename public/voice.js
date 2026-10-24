@@ -411,9 +411,10 @@ const tabId = Math.random().toString(36).slice(2);
 let hazelChannel = null;
 try { hazelChannel = new BroadcastChannel("hazel-voice"); } catch {}
 function claimHazel() {
-  silencedByOtherTab = false;
+  silencedByOtherTab = false; lastSpoken = null; // the next state sets the baseline, so past lines are not replayed
   const b = document.getElementById("otherTabBanner"); if (b) b.remove();
   try { hazelChannel && hazelChannel.postMessage({ type: "claim", tabId }); } catch {}
+  act({ type: "claim", tab: tabId }); // server side: other browsers' tabs stop receiving Hazel's lines
 }
 if (hazelChannel) hazelChannel.onmessage = (e) => {
   if (!e.data || e.data.type !== "claim" || e.data.tabId === tabId) return;
@@ -428,3 +429,18 @@ if (hazelChannel) hazelChannel.onmessage = (e) => {
     document.body.appendChild(b);
   }
 };
+
+// Hard guard: with an OpenAI voice on the server, the browser voice can never speak, and stray speech is cancelled.
+let speakPatched = false;
+setInterval(() => {
+  if (!S) return;
+  if (S.tts && S.tts.openai && !speakPatched && window.speechSynthesis) {
+    speakPatched = true;
+    try { speechSynthesis.cancel(); speechSynthesis.speak = () => { audioLog("[speak] browser voice blocked (OpenAI is the voice)"); }; } catch {}
+  }
+  if (speakPatched && (audioPlaying || speaking)) { try { speechSynthesis.cancel(); } catch {} }
+  // Another tab (maybe another browser) owns Hazel now: go silent here and stop listening.
+  if (S.voiceOwnerElsewhere && !silencedByOtherTab && document.getElementById("startOverlay")?.classList.contains("gone")) {
+    hazelChannel && hazelChannel.onmessage && hazelChannel.onmessage({ data: { type: "claim", tabId: "server" } });
+  }
+}, 500);

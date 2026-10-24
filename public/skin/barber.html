@@ -181,7 +181,7 @@ function render() {
   if (!thinking && !listening && $("interim").textContent === "") $("interim").textContent = "Say “Hey Hazel, how are we doing?”";
 }
 async function poll() {
-  try { S = await (await fetch("/api/state")).json(); render(); } catch {}
+  try { S = await (await fetch("/api/state?tab=" + (typeof tabId !== "undefined" ? tabId : ""))).json(); render(); } catch {}
 }
 setInterval(poll, 600);
 poll();

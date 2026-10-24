@@ -26,7 +26,9 @@ const TICK_MS = 250;
 setInterval(() => sim.step((sim.speed * TICK_MS) / 1000), TICK_MS);
 setInterval(() => { void agent.tick(); }, 1000);
 
-function state() {
+// Only the most recently tapped /barber tab (any browser) gets Hazel's lines, so only one tab can ever speak.
+let voiceOwner = "";
+function state(tab = "") {
   return {
     now: clock(sim.t),
     speed: sim.speed,
@@ -41,7 +43,8 @@ function state() {
     dayStarted: sim.dayStarted,
     barberName: sim.barberName,
     closeAt: clock(sim.closeAt),
-    voice: sim.voice.map((v) => ({ ...v, t: clock(v.t) })),
+    voice: tab && tab === voiceOwner ? sim.voice.map((v) => ({ ...v, t: clock(v.t) })) : [],
+    voiceOwnerElsewhere: Boolean(voiceOwner) && tab !== voiceOwner,
     reson8: Boolean(process.env.RESON8_API_KEY),
     brain: { default: process.env.VOICE_BRAIN === "openai" ? "openai" : "claude", openaiReady: Boolean(process.env.OPENAI_API_KEY), last: agent.lastBrain },
     tts: { openai: Boolean(process.env.OPENAI_API_KEY) && ttsChars < TTS_CAP, voice: TTS_VOICE, chars: ttsChars, cap: TTS_CAP },
@@ -84,6 +87,7 @@ async function action(body: any) {
       break;
     }
     case "startday": await agent.greet(); break;
+    case "claim": voiceOwner = String(body.tab ?? "").slice(0, 40); console.log("[voice] owner tab claimed"); break;
     case "hold": sim.voiceHoldUntil = body.on ? Date.now() + Math.min(30000, Number(body.ms) || 15000) : 0; break; // clock pauses while the barber talks to Hazel
     case "closetime": { const m = /^(\d{1,2}):(\d{2})$/.exec(String(body.value)); if (m) sim.closeAt = Number(m[1]) * 60 + Number(m[2]); break; }
     case "voice": { const text = String(body.text ?? "").trim().slice(0, 500); if (text) await agent.voice(text); break; }
@@ -92,9 +96,10 @@ async function action(body: any) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.url === "/api/state") {
+    if (req.url?.startsWith("/api/state")) {
+      const tab = new URL(req.url, "http://x").searchParams.get("tab") ?? "";
       res.writeHead(200, { "content-type": "application/json" });
-      return res.end(JSON.stringify(state()));
+      return res.end(JSON.stringify(state(tab)));
     }
     if (req.url === "/api/tts" && req.method === "POST") {
       // One sentence in, mp3 out (streamed through). Any problem: 503, and the browser speaks it itself.
