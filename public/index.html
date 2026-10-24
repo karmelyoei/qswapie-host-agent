@@ -343,6 +343,12 @@ function startWebSpeech() {
     }
   };
   rec.onend = () => { if (listening && rec && !speaking) try { rec.start(); } catch {} };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture") {
+      const r = rec; rec = null; listening = false; sttMode = "typed only (no mic)"; try { r.abort(); } catch {}
+      vctl(); $("typed").focus();
+    }
+  };
   try { rec.start(); } catch { return false; }
   sttMode = "browser speech";
   vctl();
